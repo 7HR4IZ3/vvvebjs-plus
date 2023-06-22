@@ -15,9 +15,10 @@
     <title>VvvebJs</title>
 
     <link href="css/editor.css" rel="stylesheet" />
+		<link rel="stylesheet" type="text/css" href="css/context.standalone.css">
   </head>
 
-  <body>
+  <body style="overflow: hidden">
     <main id="vvveb-builder" class="row">
       <section>
         <div
@@ -41,7 +42,7 @@
                 height="20px"
               />
             </button>
- -->
+  -->
             <button
               class="btn btn-light"
               title="Toggle left column"
@@ -178,7 +179,7 @@
             </button>
           </div>
 
-          <div class="float-end me-3">
+          <div class="float-end me-3 my-auto">
             <button
               class="btn btn-light border-0 btn-sm btn-dark-mode"
               data-vvveb-action="toggleMode"
@@ -409,7 +410,7 @@
                       <div id="editormanager" class="filemanager d-flex flex-column">
                         <div class="header d-flex justify-content-between">
                           <span class="text-secondary"
-                            ><i class="la la-file la-lg"></i>Editors</span
+                            ><i class="la la-file la-lg"></i> Editors</span
                           >
                         </div>
 
@@ -1923,17 +1924,21 @@
     <!-- script src="libs/builder/components-server.js"></script -->
     <script src="libs/builder/plugin-google-fonts.js"></script>
     <script src="libs/builder/component.js"></script>
+    <script src="libs/builder/components-html.js"></script>
     <script src="libs/builder/plugin-aos.js"></script>
     <script src="libs/builder/plugin-bootstrap5.js"></script>
+    <script src="libs/builder/plugin-utils.js"></script>
   
     <!-- <script src="libs/builder/components-common.js"></script> -->
     <!-- <script src="libs/builder/components-bootstrap5.js"></script> -->
-    <script src="libs/builder/components-html.js"></script>
     <!-- <script src="libs/builder/components-elements.js"></script> -->
     <!-- <script src="libs/builder/components-widgets.js"></script> -->
 
-    <script src="libs/builder/nunjucks.min.js"></script>
-    <script src="libs/builder/plugin-nunjucks.js"></script>
+    <!-- <script src="libs/builder/nunjucks.min.js"></script> -->
+    <!-- <script src="libs/builder/plugin-nunjucks.js"></script> -->
+
+    <!-- <script src="libs/builder/onsenui.min.js"></script> -->
+    <!-- <script src="libs/builder/plugin-onsenui.js"></script> -->
 
     <!-- sections-->
     <!-- <script src="libs/builder/sections.js"></script> -->
@@ -1988,11 +1993,14 @@
           file: "editor-ui.html",
         },
         {
-          name: "landing-page",
-          title: "Landing page",
-          url: "demo/landing/index.html",
-          file: "demo/landing/index.html",
-          assets: ["demo/landing/css/style.css"],
+          name: "empty-page",
+          title: "Empty page",
+          url: "demo/empty/index.html",
+          file: "demo/empty/index.html",
+          /*assets: [
+            "/libs/builder/onsenui.min.css",
+            "/libs/builder/onsenui.min.js"
+          ],*/
         },
         {
           name: "album",
@@ -2044,11 +2052,11 @@
           file: "demo/product/index.html",
           folder: "ecommerce",
           assets: ["demo/product/product.css"],
-        },
+        }
       ];
       let builder;
 
-      $(function () {
+      $(function() {
         builder = new VvvebJS({
           pages,
           themeBaseUrl: "demo/landing/",
@@ -2062,20 +2070,20 @@
             new AosPlugin(),
             new MediaPlugin(),
             new JsZipPlugin(),
-            new NunjucksPlugin(),
+            // new NunjucksPlugin(),
             new CKEditorPlugin(),
+            // new OnsenuiPlugin(),
             new GoogleFontsManager(),
             new CodeMirrorPlugin(),
             new Bootstrap5Plugin(),
+            new ClipboardPlugin(),
+            new SearchBarPlugin()
           ],
           codeeditor: {
             lineWrapping: false,
           },
         });
         builder.initialize();
-        builder.on("gui.node.select", (node) => {
-            console.log('Selected node:', node)
-        })
       });
     </script>
   </body>

@@ -3,6 +3,7 @@ class HTMLDivComponent extends Component {
   name = "Div";
   image = "icons/container.svg";
   nodes = ["div"];
+  description = "HTML Divsion Element"
   html = dom.div("Nev Div");
 
   get properties() {
@@ -759,6 +760,13 @@ class HTMLListComponent extends Component {
   html = dom.ul(dom.li("Item 1"), dom.li("Item 2"), dom.li("Item 3"));
 }
 
+class HTMLListItemComponent extends Component {
+  name = "List Item"
+  nodes = ["li"]
+  image = "icons/list.svgg"
+  html = dom.li("Item 1")
+}
+
 class HTMLPreformattedComponent extends Component {
   name = "Preformatted";
   nodes = ["pre"];
@@ -771,11 +779,24 @@ class HTMLPreformattedComponent extends Component {
     return [
       new Property(
         "Text",
-        new TextareaInput({ key: "text", htmlAttr: "innerHTML", rows: 20 })
+        new TextareaInput({ key: "text", htmlAttr: "innerHTML", rows: 20 }),
+        { col: 12 }
       ),
       ...super.properties
     ];
   }
+}
+
+class HTMLNavComponent extends Component {
+  name = "Navigation"
+  nodes = ["nav"]
+  html = dom.nav(dom.ul(dom.li("Item")))
+}
+
+class HTMLTemplateComponent extends Component {
+  name = "Template"
+  nodes = ["template"]
+  html = dom.template(dom.p("Template Content."))
 }
 
 class HTMLFormComoponent extends Component {
@@ -1163,6 +1184,7 @@ class HTMLComponents extends ComponentGroup {
   hr = new HTMLHrComponent();
   br = new HTMLBrComponent();
   label = new HTMLLabelComponent();
+  template = new HTMLTemplateComponent();
   input = new HTMLInputComponent();
   select = new HTMLSelectInputComponent();
   textarea = new HTMLTextareaComponent();

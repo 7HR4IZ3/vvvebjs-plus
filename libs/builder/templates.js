@@ -481,7 +481,7 @@ let TEMPLATES = {
     `,
   "vvveb-input-button": `
       <div>
-        <button class="btn btn-sm btn-primary">
+        <button class="btn btn-sm btn-primary {% if (typeof className !== 'undefined') { %} {%=className%} {% } %}">
           <i
             class="la  {% if (typeof icon !== 'undefined') { %} {%=icon%} {% } else { %} la-plus {% } %} la-lg"
           ></i>

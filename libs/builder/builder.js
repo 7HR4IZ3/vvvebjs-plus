@@ -2506,7 +2506,7 @@ function getNodeTree(node, parent, allowedComponents) {
 	getNodeTreeTraverse(node, parent);
 }
 
-function this.builder.drawComponentsTree(tree) {
+function drawComponentsTree(tree) {
 	var j = 1;
 	var prefix = Math.floor(Math.random() * 100);
 

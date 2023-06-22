@@ -114,4 +114,3 @@ observer.observe(document.getElementById("observe-everything"), {
     characterData: true,
     characterDataOldValue: true
 });
-})();

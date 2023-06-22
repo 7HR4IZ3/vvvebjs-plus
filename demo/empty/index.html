@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exaple Document</title>
+</head>
+<body style="height: 100vh">
+    <ons-navigator id="myNavigator" swipeable page="page0.html"></ons-navigator>
+
+    <template id="page0.html">
+      <ons-page id="page0">
+        <ons-toolbar>
+          <div class="center">Navigator</div>
+        </ons-toolbar>
+  
+        <div style="text-align: center">
+          <br>
+          <ons-button
+            onclick="myNavigator.pushPage('page1.html')">
+            Push Page 2
+          </ons-button>
+        </div>
+      </ons-page>
+    </template>
+  
+    <template id="page1.html">
+      <ons-page id="page1">
+        <ons-toolbar>
+          <div class="left"><ons-back-button>Back</ons-back-button></div>
+          <div class="center"></div>
+        </ons-toolbar>
+  
+        <div style="text-align: center">
+          <h1>Custom Page</h1>
+  
+          <p>
+            <ons-input modifier="underbar" placeholder="Title" float></ons-input>
+          </p>
+          <ons-button
+            onclick="customPush()">
+            Push Page
+          </ons-button>
+          <ons-button
+            onclick="push404Page()">
+            Push 404-Page
+          </ons-button>
+  
+          <ons-button
+            onclick="myNavigator.popPage()">
+            Pop Page
+          </ons-button>
+  
+          <ons-button
+            onclick="myNavigator.resetToPage('page0.html', { pop: true })">
+            Go Home
+          </ons-button>
+        </div>
+  
+        <script>
+          ons.getScriptPage().onInit = function() {
+            console.log(this.id, 'init hook');
+  
+            this.onShow = function() {
+              console.log(this.id, 'show hook');
+            };
+  
+            this.onHide = function() {
+              console.log(this.id, 'hide hook');
+            };
+  
+            this.onDestroy = function() {
+              console.log(this.id, 'destroy hook');
+            };
+          };
+        </script>
+      </ons-page>
+    </template>
+</body>
+</html>

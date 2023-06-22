@@ -53,6 +53,11 @@ function capitalize(name) {
   return name.slice(0,1).toUpperCase() + name.slice(1).toLowerCase()
 }
 
+function toCamel(string) {
+  let ret = string.split("-");
+  return ret.slice(0, 1) + ret.slice(1).map(capitalize).join("")
+}
+
 class Component extends Plugin {
   type = "_base"
   name = "Element";
@@ -69,18 +74,30 @@ class Component extends Plugin {
   }
   
   get properties() {
-    let code_input = window.CodeInput;
+    let self = this;
     return [
       new PropertyGroup("Attributes", {
         section: content_section,
         beforeInit(element) {
           for (let attr of element.attributes) {
             let name = attr.name;
-            if (name !== "class" && name !== "id") {
-              this.properties.splice(0, 0, new Property(capitalize(name), new TextInput({
-                key: name, htmlAttr: name,
-                defaultValue: attr.value
-              })))
+            if (name !== "class" && name !== "id" && name !== "style") {
+              let prop;
+              if (name.startsWith("on")) {
+                prop = new Property(name, new CodeInput({
+                  key: name, htmlAttr: name,
+                  defaultValue: attr.value,
+                  config: {
+                    mode: "javascript"
+                  }
+                }), { col: 12 })
+              } else {
+                prop = new Property(name, new TextInput({
+                  key: name, htmlAttr: name,
+                  defaultValue: attr.value
+                }))
+              }
+              this.properties.splice(0, 0, prop)
             }
           }
         }
@@ -118,17 +135,16 @@ class Component extends Plugin {
                 key: "addAttr",
                 icon: "la-plus",
                 text: "",
-                col: 12
+                class: "col-12"
               })
             }),
             {
               col: 12,
-              onChange(node, value, input) {
-                console.log(value, input.inputs)
-                if (value["Add Attr"] === true && value.name) {
+              onChange(node, value, input, component, caller, caller_input) {
+                if (caller == "Add Attr") {
                   $(node).attr(value.name, value.value);
                   //render component properties again to include the new column inputs
-                  this.builder.loadNodeComponent(node);
+                  self.builder.Builder.loadNodeComponent(node);
                 }
                 return node;
               },
@@ -136,8 +152,108 @@ class Component extends Plugin {
           )
         ])
       ]),
-
+      new PropertyGroup("Add Style", { section: style_section }, [
+        new Property(
+          "",
+          new MultiInput({
+            name: new TextInput({ col: 12 }),
+            value: new TextInput({ col: 12 }),
+            "Add Attr": new ButtonInput({
+              key: "addAttr",
+              icon: "la-plus",
+              text: "",
+              class: "col-12"
+            })
+          }),
+          {
+            col: 12,
+            onChange(node, value, input, component, caller, caller_input) {
+              if (caller == "Add Attr") {
+                let style = {};
+                style[value.name] = value.value;
+                $(node).css(style);
+                //render component properties again to include the new column inputs
+                self.builder.Builder.loadNodeComponent(node);
+              }
+              return node;
+            },
+          }
+        )
+      ]),
       new PropertyGroup("Display", { section: style_section }, [
+        new Property(
+          "Mode",
+          new SelectInput({
+            key: "display",
+            htmlAttr: "style",
+            options: [
+              {
+                value: "none",
+                text: "None",
+              },
+              {
+                value: "block",
+                text: "Block",
+              },
+              {
+                value: "inline",
+                text: "Inline",
+              },
+              {
+                value: "run-in",
+                text: "Run In",
+              },
+              {
+                value: "contents",
+                text: "Contents",
+              },
+              {
+                value: "flow",
+                text: "Flow",
+              },
+              {
+                value: "flow-root",
+                text: "Flow Root",
+              },
+              {
+                value: "flex",
+                text: "Flex",
+              },
+              {
+                value: "table",
+                text: "Table",
+              },
+              {
+                value: "grid",
+                text: "Grid",
+              },
+              {
+                value: "ruby",
+                text: "Ruby",
+              },
+              {
+                value: "table",
+                text: "Table",
+              },
+              {
+                value: "inline block",
+                text: "Inline Block",
+              },
+              {
+                value: "inline flex",
+                text: "Inline Flex",
+              },
+              {
+                value: "inline table",
+                text: "Inline Table",
+              },
+              {
+                value: "inline grid",
+                text: "Inline Grid",
+              },
+            ],
+          })
+        ),
         new Property(
           "Position",
           new SelectInput({
@@ -218,7 +334,7 @@ class Component extends Plugin {
         ),
         new Property(
           "Background Color",
-          new ColorInput({ key: "background_color" })
+          new ColorInput({ key: "background-color", htmlAttr: "style" })
         ),
         new Property(
           "Text Color",

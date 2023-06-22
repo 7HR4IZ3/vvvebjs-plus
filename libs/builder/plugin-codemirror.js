@@ -17,16 +17,15 @@ class CodeInput extends Input {
 	}
 
 	get html() {
-		let ret = this.renderTemplate("textareainput", this.data);
-		return ret;
+		return this.renderTemplate("textareainput", this.data)
 	}
 
 	init(node) {
 		let _this = this;
 		this.codemirror = CodeMirror.fromTextArea(node.find("textarea").get(0), {
 			mode: 'text/html',
-			lineNumbers: true,
-			autofocus: true,
+			lineNumbers: false,
+			autofocus: false,
 			lineWrapping: false,
 			theme: ((localStorage.getItem("vvveb.theme") || "light") === "light") ? "material" : 'monokai',
 			...(this.data.config || {})

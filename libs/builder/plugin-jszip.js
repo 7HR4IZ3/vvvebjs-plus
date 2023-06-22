@@ -18,39 +18,43 @@ https://github.com/givanz/Vvvebjs
 
 class JsZipPlugin extends Plugin {
   initialize() {
-    this.builder.Gui.download = this.download.bind(this);
+    this.builder.once("gui:init", () => {
+      this.builder.Gui.download = this.download.bind(this)
+    });
   }
 
   download() {
     let self = this;
     let assets = [];
+    let builder = this.builder.Builder;
 
     function addUrl(url, href, binary) {
       assets.push({ url, href, binary });
     }
 
-    let html = self.builder.Builder.frameHtml;
+    let doc = $(builder.currentPage.iframe.get(0).contentDocument);
+    let html = doc.find("html").get(0).outerHTML;
+    console.log(html)
 
-    //stylesheets
-    $("link[href$='.css']", html).each(function (i, e) {
-      addUrl(e.href, e.getAttribute("href"), false);
-    });
+    // //stylesheets
+    // $("link[href$='.css']", html).each(function (i, e) {
+    //   addUrl(e.href, e.getAttribute("href"), false);
+    // });
 
-    //javascripts
-    $("script[src$='.js']", html).each(function (i, e) {
-      addUrl(e.src, e.getAttribute("src"), false);
-    });
+    // //javascripts
+    // $("script[src$='.js']", html).each(function (i, e) {
+    //   addUrl(e.src, e.getAttribute("src"), false);
+    // });
 
-    //images
-    $("img[src]", html).each(function (i, e) {
-      addUrl(e.src, e.getAttribute("src"), true);
-    });
+    // //images
+    // $("img[src]", html).each(function (i, e) {
+    //   addUrl(e.src, e.getAttribute("src"), true);
+    // });
 
     let zip = new JSZip();
     let promises = [];
 
-    for (i in assets) {
-      let asset = assets[i];
+    for (let asset of assets) {
       let url = asset.url;
       let href = asset.href;
       let binary = asset.binary;
@@ -98,23 +102,26 @@ class JsZipPlugin extends Plugin {
       );
     }
 
-    Promise.all(promises)
-      .then((data) => {
-        let html = self.builder.Builder.getHtml();
+    // Promise.all(promises)
+    //   .then((data) => {
+    //     let html = self.builder.Builder.getHtml();
 
-        for (i in data) {
-          let file = data[i];
-          html = html.replace(file.href, file.filename);
-          zip.file(file.filename, file.data, { base64: file.binary });
-        }
+    //     for (let file of data) {
+    //       html = html.replace(file.href, file.filename);
+    //       zip.file(file.filename, file.data, { base64: file.binary });
+    //     }
 
-        zip.file("index.html", html);
-        zip.generateAsync({ type: "blob" }).then(function (content) {
-          saveAs(content, "template.zip");
-        });
-      })
-      .catch((error) => {
-        console.log(error);
-      });
+    //     zip.file("index.html", html);
+    //     zip.generateAsync({ type: "blob" }).then(function (content) {
+    //       saveAs(content, "template.zip");
+    //     });
+    //   })
+    //   .catch((error) => {
+    //     console.log(error);
+    //   });
+    zip.file("index.html", html);
+    zip.generateAsync({ type: "blob" }).then(function (content) {
+      saveAs(content, "template.zip");
+    });
   }
 }

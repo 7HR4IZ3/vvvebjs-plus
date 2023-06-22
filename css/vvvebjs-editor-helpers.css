@@ -71,4 +71,7 @@ Prevents iframe mouse events that prevents clicking on the component
 .vvveb-hidden {
   display: none !important; }
 
-
+/* Show template elements */
+template {
+  display: block;
+}

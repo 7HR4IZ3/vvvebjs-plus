@@ -157,6 +157,20 @@ function randomId(length) {
   return ret.join("");
 }
 
+function changeNodeName(node, newNodeName) {
+  let newNode = document.createElement(newNodeName);
+  let attributes = node.get(0).attributes;
+
+  for (let attr of attributes) {
+    newNode.setAttribute(attr.nodeName, attr.nodeValue);
+  }
+
+  $(newNode).append(...node.children);
+  $(node).replaceWith(newNode);
+
+  return newNode;
+}
+
 var selected = null;
 var dragover = null;
 
@@ -254,17 +268,27 @@ class EventEmitter {
   emit(event, ...args) {
     return new Promise((resolve, reject) => {
       let events = [];
-      for (let ev in this[eventsKey]) {
-        if (new RegExp(ev.replace("*", "(.*)")).test(event)) {
-          events.push(...this[eventsKey][ev])
+      for (let item in this[eventsKey]) {
+        if (item.indexOf("*") !== -1) {
+          if (new RegExp(item.replace("*", "(.*)")).test(event)) {
+            events.push(...this[eventsKey][item]);
+          }
+        } else {
+          if (item === event) {
+            events.push(...this[eventsKey][item]);
+          }
         }
       }
-
+      let ev = {
+        type: "VvebEvent",
+        name: event,
+        args: args
+      };
       for (let item of events) {
         if (typeof item === "function") {
-          item(args);
+          item(ev, ...args);
         } else if (item && item.listener) {
-          item.listener(...args);
+          item.listener(ev, ...args);
         }
       }
       if (this[eventsKey][event]?.length) {
@@ -495,7 +519,7 @@ class Components {
             }
 
             for (let regex in this._classesRegexLookup) {
-              regexObj = new RegExp(regex);
+              let regexObj = new RegExp(regex);
               if (regexObj.exec(value)) {
                 return this._classesRegexLookup[regex];
               }
@@ -576,8 +600,9 @@ class Components {
       var fn = function (component, property) {
         return property.input_node.on(
           "propertyChange",
-          function (event, value, input) {
+          function (event, value, input, ...args) {
             let selectedElement;
+            let FrameDocument = this.builder.Builder.iframe.contentWindow.document;
             var element = (selectedElement = self.builder.Builder.selectedEl);
 
             if (property.config.child)
@@ -590,7 +615,8 @@ class Components {
                 element,
                 value,
                 input,
-                component
+                component,
+                ...args
               );
               //if on change returns an object then is returning the dom node otherwise is returning the new value
               if (typeof ret == "object") {
@@ -1087,7 +1113,7 @@ class BuilderPage extends Plugin {
   }
 
   load(url, callback) {
-    this.builder.Builder._loadIframe(url || this.config.url, callback);
+    this.builder.Builder._loadIframe(url || this.config.url, callback, this);
     this.render();
     this.builder.emit("builder_page:load", this);
   }
@@ -1200,12 +1226,13 @@ class Builder {
   }
 
   get currentPageName() {
-    return this._currentPageName
+    return this._currentPageName;
   }
 
   set currentPageName(value) {
+    if (value === this._currentPageName) return;
     this._currentPageName = value;
-    this.builder.emit("builder:page.focus", value)
+    this.builder.emit("builder:page.focus", value);
   }
 
   get iframe() {
@@ -1214,6 +1241,10 @@ class Builder {
 
   get page() {
     return this.pages.get(this.pageName);
+  }
+
+  get currentPage() {
+    return this.pages.get(this.currentPageName || this.pageName);
   }
 
   addPage(name, config) {
@@ -1244,6 +1275,7 @@ class Builder {
       }
     }
     page.toggle();
+
     this._addEditorItem(page.name, page);
     localStorage.setItem("vvveb.page", name);
 
@@ -1353,7 +1385,7 @@ class Builder {
       folder.append(tmpl("vvveb-editormanager-page", data));
     }
     this.builder.emit(
-      "editormanager:item.add",
+      "manager.editor:item.add",
       name,
       this.pages.get(name),
       folder
@@ -1363,15 +1395,14 @@ class Builder {
   /* controls */
   loadControlGroups() {
     let self = this;
-    var componentsList = $(".components-list");
+    let componentsList = $(".components-list");
     componentsList.empty();
-    var item = {},
-      component = {};
-    var count = 0;
+    let item = {};
+    let count = 0;
 
     componentsList.each(function () {
-      var list = $(this);
-      var type = this.dataset.type;
+      let list = $(this);
+      let type = this.dataset.type;
       count++;
 
       for (let group in self.builder.ComponentsGroup) {
@@ -1385,10 +1416,7 @@ class Builder {
 				</li>`
         );
 
-        //list.append('<li class="header clearfix" data-section="' + group + '"  data-search=""><label class="header" for="' + type + '_comphead_' + group + count + '">' + group + '  <div class="header-arrow"></div>\
-        //				   </label><input class="header_check" type="checkbox" checked="true" id="' + type + '_comphead_' + group + count + '">  <ol></ol></li>');
-
-        var componentsSubList = list.find(
+        let componentsSubList = list.find(
           'li[data-section="' + group + '"]  ol'
         );
 
@@ -1400,10 +1428,9 @@ class Builder {
 
           if (component) {
             item =
-              $(`<li data-section="${group}" data-drag-type="component" data-type="${componentType}" data-search="${component.name.toLowerCase()}">
+              $(`<li data-section="${group}" data-drag-type="component" data-type="${componentType}" data-search="${component.name.toLowerCase()}" title="${component.description || ''}">
 							<a href="#">${component.name}</a>
 						</li>`);
-            //item = $('<li data-section="' + group + '" data-drag-type=component data-type="' + componentType + '" data-search="' + component.name.toLowerCase() + '"><a href="#">' + component.name + "</a></li>");
 
             if (component.image) {
               item.css({
@@ -1412,7 +1439,6 @@ class Builder {
                 backgroundRepeat: "no-repeat",
               });
             }
-
             componentsSubList.append(item);
           }
         }
@@ -1566,23 +1592,28 @@ class Builder {
   }
 
   /* iframe */
-  _loadIframe(url, callback) {
-    var self = this;
+  _loadIframe(url, callback, page) {
+    let self = this;
+    let iframe = page?.iframe.get(0) || self.iframe;
+    let FrameWindow = iframe.contentWindow;
+    let FrameDocument = iframe.contentWindow.document;
     // self.iframe = this.documentFrame.get(0);
-    self.iframe.src = url;
+    iframe.src = url;
 
-    return $(self.iframe).on("load", function () {
-      let FrameWindow = self.iframe.contentWindow;
-      let FrameDocument = self.iframe.contentWindow.document;
-      var highlightBox = $("#highlight-box").hide();
+    return $(iframe).on("load", function () {
+      self.currentPageName = self.pageName;
+
+      let highlightBox = $("#highlight-box").hide();
 
       $(FrameWindow).on("beforeunload", function (event) {
         if (self.builder.Undo.undoIndex >= 0) {
-          var dialogText = "You have unsaved changes";
+          let dialogText = "You have unsaved changes";
           event.returnValue = dialogText;
           return dialogText;
         }
       });
+
+      self.builder.Gui.contextMenu.attach(FrameWindow, "contextmenu");
 
       $(FrameWindow).on("unload", function () {
         // $(".loading-message").addClass("active");
@@ -1600,7 +1631,9 @@ class Builder {
       $(FrameWindow).on("scroll resize", function () {
         if (self.selectedEl) {
           let offset = self.selectedEl.offset();
-          let iframe = self.pages.get(self.currentPageName || self.pageName).iframe;
+          let iframe = self.pages.get(
+            self.currentPageName || self.pageName
+          ).iframe;
           let frameDoc = $(iframe.get(0).contentDocument);
           let ioffset = iframe.offset();
 
@@ -1616,7 +1649,9 @@ class Builder {
 
         if (self.highlightEl) {
           let offset = self.highlightEl.offset();
-          let iframe = self.pages.get(self.currentPageName || self.pageName).iframe;
+          let iframe = self.pages.get(
+            self.currentPageName || self.pageName
+          ).iframe;
           let frameDoc = $(iframe.get(0).contentDocument);
           let ioffset = iframe.offset();
 
@@ -1629,8 +1664,6 @@ class Builder {
           };
 
           highlightBox.css(style);
-
-          //addSectionBox.hide();
         }
 
         if ($(window).outerWidth() <= SCREEN_SIZES.md) {
@@ -1643,8 +1676,14 @@ class Builder {
       });
 
       self.builder.WysiwygEditor.init(FrameDocument);
+      self.builder.emit("wysisyg:init");
+
       self.builder.StyleManager.init(FrameDocument);
+      self.builder.emit("manager.style:init");
+
       self.builder.ColorPaletteManager.init(FrameDocument);
+      self.builder.emit("manager.palette:init");
+
 
       self.builder.emit("builder:iframe.load");
 
@@ -1679,13 +1718,13 @@ class Builder {
     //   mutations.forEach(item => {
     //     console.log(item, item.target instanceof Node)
     //     if (item.target) {
-    //       _self.Undo.mutations.splice(++_self.Undo.undoIndex, _self.Undo.mutations.length - _self.Undo. undoIndex, item);
+    //       _self.Undo.mutations.splice(++_self.Undo.undoIndex, _self.Undo.mutations.length - _self.Undo.undoIndex, item);
     //       self.frameBody.trigger("vvveb.undo.add", item);
     //     }
     //   })
     // })
     // mutationObserver.observe(
-    //   window.FrameDocument.querySelector("html"),
+    //   self.frameDoc.get(0).querySelector("html"),
     //   { childList: true, attributes: true, subtree: true }
     // );
     // mutationObserver
@@ -1722,12 +1761,14 @@ class Builder {
 
   _getElementType(el) {
     //search for component attribute
-    var componentName = "";
-    var componentAttribute = "";
+    let componentName = "";
+    let componentAttribute = "";
+
+    el.get && (el = el.get(0));
 
     if (el.attributes) {
-      for (var j = 0; j < el.attributes.length; j++) {
-        var nodeName = el.attributes[j].nodeName;
+      for (let attr of el.attributes) {
+        let nodeName = attr.name;
 
         if (nodeName.indexOf("data-component") > -1) {
           componentName = nodeName.replace("data-component-", "");
@@ -1739,19 +1780,25 @@ class Builder {
             nodeName.replace("data-v-", "") +
             " ";
         }
+
+        if (nodeName == "id" && attr.value) {
+          componentAttribute = `#${attr.value}`;
+        }
       }
     }
     if (componentName != "") return componentName;
-    let name =
-      el.tagName +
+    let name = el.tagName;
+    name = name.slice(0, 1).toUpperCase() + name.slice(1).toLowerCase();
+    return (
+      name +
       (componentName ? " - " + componentName : "") +
-      (componentAttribute ? " - " + componentAttribute : "");
-    return name.slice(0, 1).toUpperCase() + name.slice(1).toLowerCase();
+      (componentAttribute ? " - " + componentAttribute : "")
+    );
   }
 
   loadNodeComponent(node) {
     let data = this.builder.Components.matchNode(node);
-    var component;
+    let component;
 
     if (data) component = data.type;
     else component = this.builder.defaultComponent;
@@ -1843,7 +1890,7 @@ class Builder {
     node = clone.click();
 
     let element = clone.get(0);
-    this.builder.emit("builder:node.clone".node.get(0), element);
+    this.builder.emit("builder:node.clone", node.get(0), element);
 
     this.builder.Undo.addMutation({
       type: "childList",
@@ -1875,36 +1922,29 @@ class Builder {
 
       try {
         let offset = target.offset();
-        let ioffset = self.pages
-          .get(self.currentPageName || self.pageName)
-          .iframe.offset();
+        let iframe = self.pages.get(
+          self.currentPageName || self.pageName
+        ).iframe;
+        let frameDoc = $(iframe.get(0).contentDocument);
+        let ioffset = iframe.offset();
 
         let style = {
-          top: ioffset.top + offset.top,
-          left: ioffset.left + offset.left,
+          top: ioffset.top + offset.top - frameDoc.scrollTop(),
+          left: ioffset.left + offset.left - frameDoc.scrollLeft(),
           display: "block",
           width: target.outerWidth() + self.selectPadding * 2,
           height: target.outerHeight() + self.selectPadding * 2,
           position: "fixed",
         };
-
-        // $("#select-box").css({
-        //   top: offset.top - self.frameDoc.scrollTop() - self.selectPadding,
-        //   left: offset.left - self.frameDoc.scrollLeft() - self.selectPadding,
-        //   width: target.outerWidth() + self.selectPadding * 2,
-        //   height: target.outerHeight() + self.selectPadding * 2,
-        //   display: "block",
-        // });
         $("#select-box").css(style);
 
         this.builder.Breadcrumb.loadBreadcrumb(target.get(0));
+        $("#highlight-name").html(this._getElementType(node));
       } catch (err) {
         console.log(err);
         return false;
       }
     }
-
-    $("#highlight-name").html(this._getElementType(node));
   }
 
   getPercent(width, against) {
@@ -1913,8 +1953,8 @@ class Builder {
 
   /* iframe highlight */
   _initHighlight() {
-    var _self = this;
-    var self = this.builder.Builder;
+    let _self = this;
+    let self = this.builder.Builder;
 
     self.frameBody.on("mousemove dragover touchmove", function (event) {
       let target;
@@ -1925,23 +1965,23 @@ class Builder {
         event.originalEvent
       ) {
         self.highlightEl = target = $(event.target);
-        var offset = target.offset();
-        var height = target.outerHeight();
-        var halfHeight = Math.max(height / 2, 50);
-        var width = target.outerWidth();
-        var halfWidth = Math.max(width / 2, 50);
-        var prepend = true;
+        let offset = target.offset();
+        let height = target.outerHeight();
+        let halfHeight = Math.max(height / 2, 50);
+        let width = target.outerWidth();
+        let halfWidth = Math.max(width / 2, 50);
+        let prepend = true;
 
-        var x = event.originalEvent.x;
-        var y = event.originalEvent.y;
+        let x = event.originalEvent.x;
+        let y = event.originalEvent.y;
 
         if (self.isResize) {
           if (!self.initialPosition) {
             self.initialPosition = { x, y };
           }
 
-          var deltaX = x - self.initialPosition.x;
-          var deltaY = y - self.initialPosition.y;
+          let deltaX = x - self.initialPosition.x;
+          let deltaY = y - self.initialPosition.y;
 
           offset = self.selectedEl.offset();
 
@@ -2096,7 +2136,9 @@ class Builder {
           //     : "block",
           //   "border-left": self.isDragging ? "3px dashed limegreen" : "",
           // };
-          let iframe = self.pages.get(self.currentPageName || self.pageName).iframe;
+          let iframe = self.pages.get(
+            self.currentPageName || self.pageName
+          ).iframe;
           let frameDoc = $(iframe.get(0).contentDocument);
           let ioffset = iframe.offset();
 
@@ -2121,7 +2163,8 @@ class Builder {
             $("#section-actions").removeClass("outside");
           }
 
-          $("#highlight-name").html(self._getElementType(event.target));
+          event.target &&
+            $("#highlight-name").html(self._getElementType(event.target));
         }
       }
     });
@@ -2216,7 +2259,7 @@ class Builder {
           }
           $("#add-section-box").hide();
           event.preventDefault();
-          self.builder.emit("gui.node_select", event.target);
+          self.builder.emit("gui:node.select", event.target);
           return false;
         }
       }
@@ -2650,6 +2693,64 @@ class Builder {
   setDesignerMode(designerMode = false) {
     this.designerMode = designerMode;
   }
+
+  generateXPath(node) {
+    let get_element_index = (node) => {
+        let temp = [];
+
+        for (let child of (node.parentElement?.children || [])) {
+            if (typeof child !== "undefined") {
+                if (child.tagName.toLowerCase() == node.localName) {
+                    temp.push(child);
+                }
+            }
+        }
+        return temp;
+    };
+    let temp_one = get_element_index(node);
+    let last_node_index = Array.prototype.indexOf.call(temp_one, node);
+    let current = "";
+    let path;
+
+    if (temp_one.length == 1) {
+        path = "/" + node.localName;
+    } else if (temp_one.length > 1) {
+        last_node_index = last_node_index + 1;
+        path = "/" + node.localName + "[" + last_node_index + "]";
+    }
+
+    while (node != document.html && node.parentNode !== null) {
+      node = node.parentNode;
+      /* When loop reaches the last element of the dom (body)*/
+      if (node.localName == "body") {
+        current = "/body";
+        path = current + path;
+        break;
+      }
+      /* if the node has id attribute and is not the last element */
+      if (node.id != "" && node.localName != "body") {
+        current = "/" + node.localName + "[@id='" + node.id + "']";
+        path = current + path;
+        break;
+      }
+      /* if the node has class attribute and has no id attribute or is not the last element */
+      if (node.id == "" && node.localName != "body") {
+        if (node.parentNode !== null) {
+          let temp = get_element_index(node);
+          let node_index = Array.prototype.indexOf.call(temp, node);
+
+          if (temp.length == 1) {
+            current = "/" + node.localName;
+          } else if (temp.length > 1) {
+            node_index = node_index + 1;
+            current = "/" + node.localName + "[" + node_index + "]";
+          }
+        }
+      }
+      path = current + path;
+    }
+    return "/" + path;
+  }
 }
 
 class CodeEditor {
@@ -2704,11 +2805,14 @@ class CodeEditor {
 
 class Gui {
   constructor(instance) {
+    let self = this;
     this.builder = instance;
     this.oldHTML = "";
 
     this.previewManager = "default";
     this.previewManagers = { default: this.prepareHtml };
+
+    this.mainGui = new SectionManager("#vvveb-builder");
 
     this.topPanel = new SectionManager("#top-panel");
     this.bottomPanel = new SectionManager("#bottom-panel");
@@ -2716,19 +2820,54 @@ class Gui {
     this.previewPanel = new SectionManager("#preview-panel");
     this.codeEditorPanel = new SectionManager("#vvveb-code-editor");
 
+    this.previewPanel.selectBox = new SectionManager("#select-box");
+    this.previewPanel.selectActions = new SectionManager("#select-actions");
+    this.previewPanel.highlightBox = new SectionManager("#highlight-box");
+
     this.leftPanel.fileManager = new SectionManager("#filemanager");
 
     this.bottomPanel.breadCrumb = new SectionManager("#breadcrumb-navigator");
-    this.contextMenu = new Menu([
-      new MenuItem("Element", [
-        new MenuItem("Click", {
-          action(e, node) {
-            console.log(node);
-            node.click();
-          },
+
+    let getNode = () => {
+      return self.builder.Builder.highlightEl || self.builder.Builder.selectedEl
+    }
+
+    let selectNode = (node) => {
+      self.builder.Builder.selectNode(node);
+      self.builder.Builder.loadNodeComponent(node);
+    }
+
+    this.contextMenu = new Menu({ builder: this.builder }, [
+      new SubMenu("Action", { divider: false }, [
+        new MenuItem("Select", {
+          icon: "la la-mouse-pointer",
+          action(e, data) {
+            let node = getNode();
+            selectNode(node)
+          }
         }),
+        new MenuItem("Rename", {
+          action() {
+            let node = getNode();
+            let target = prompt("New node name: ");
+            if (target) {
+              changeNodeName(node, target);
+              selectNode(node);
+            }
+          }
+        }),
+        new MenuItem("Xpath", {
+          icon: "la la-clipboard",
+          action(e) {
+            let node = getNode();
+            let path = self.builder.Builder.generateXPath(node.get(0))
+            try { navigator.clipboard.writeText(path) }
+            catch { alert(path) }
+          }
+        })
       ]),
     ]);
+    this.contextMenu.attach("#options-btn", "click");
   }
 
   init() {
@@ -2885,6 +3024,7 @@ class Gui {
       let uriContent =
         "data:application/octet-stream," +
         encodeURIComponent(self.builder.Builder.getHtml());
+      console.log(filename)
 
       var link = document.createElement("a");
       if ("download" in link) {
@@ -2913,8 +3053,11 @@ class Gui {
 
     $("[data-vvveb-action]").each(function () {
       let on = this.dataset?.vvvebOn || "click";
+      let action = this.dataset.vvvebAction;
 
-      $(this).on(on, self.builder.Gui[this.dataset.vvvebAction]);
+      $(this).on(on, function(...args) {
+        self[action].call(this, ...args)
+      });
       //   if (this.dataset.vvvebShortcut) {
       //     $(document).bind(
       //       "keydown",
@@ -3466,6 +3609,8 @@ class SectionList {
     this.builder = instance;
     this.selector = ".sections-container";
     this.allowedComponents = {};
+    this.selected = null;
+    this.dragover = null;
   }
 
   init(allowedComponents = {}) {
@@ -3642,7 +3787,7 @@ class SectionList {
 
     var sections = [];
     var sectionList = $(
-      "> section, > header, > footer, > main, > nav",
+      "> section, > header, > footer, > main, > nav, > aside",
       FrameDocument.body
     );
 
@@ -3690,24 +3835,24 @@ class SectionList {
 
   //drag and drop
   dragOver(e) {
-    if (e.target != dragover && e.target.className == "section-item") {
-      if (dragover) {
-        dragover.classList.remove("drag-over");
+    if (e.target != this.dragover && e.target.className == "section-item") {
+      if (this.dragover) {
+        this.dragover.classList.remove("drag-over");
       }
-      dragover = e.target;
-      dragover.classList.add("drag-over");
+      this.dragover = e.target;
+      this.dragover.classList.add("drag-over");
     }
   }
 
   dragEnd() {
-    if (dragover) {
-      var parent = selected.parentNode;
-      var selectedNode = $(selected).data("node");
-      var replaceNode = $(dragover).data("node");
+    if (this.dragover) {
+      let parent = this.selected.parentNode;
+      let selectedNode = $(this.selected).data("node");
+      let replaceNode = $(this.dragover).data("node");
 
-      if (dragover.offsetTop > selected.offsetTop) {
+      if (this.dragover.offsetTop > this.selected.offsetTop) {
         //replace section item list
-        parent.insertBefore(selected, dragover.nextElementSibling);
+        parent.insertBefore(this.selected, this.dragover.nextElementSibling);
         //replace section
         replaceNode.parentNode.insertBefore(
           selectedNode,
@@ -3715,29 +3860,30 @@ class SectionList {
         );
       } else {
         //replace section item list
-        parent.insertBefore(selected, dragover);
+        parent.insertBefore(this.selected, this.dragover);
         //replace section
         replaceNode.parentNode.insertBefore(selectedNode, replaceNode);
       }
 
-      dragover.classList.remove("drag-over");
+      this.dragover.classList.remove("drag-over");
+      console.log(selectedNode)
 
-      var node = selectedNode.get(0);
+      let node = selectedNode.get ? selectedNode.get(0) : selectedNode;
 
-      self.dragMoveMutation = {
+      this.builder.Undo.addMutation({
         type: "move",
         target: node,
         oldParent: node.parentNode,
         oldNextSibling: node.nextSibling,
-      };
+      });
     }
 
-    selected = null;
-    dragover = null;
+    this.selected = null;
+    this.dragover = null;
   }
 
   dragStart(e) {
-    selected = e.target;
+    this.selected = e.target;
   }
 }
 
@@ -4321,24 +4467,22 @@ class VvvebJS extends EventEmitter {
 
     if (!page) page = this.config.pages[0];
 
-    this.Builder.init(page["url"], () => {
-      //load code after page is loaded here
-      this.Gui.pageProperties.render();
-    });
+    this.Builder.init(page["url"]);
+    this.on("builder:page.focus", () => this.Gui.pageProperties.render());
 
     this.Gui.init();
     this.Gui.pageProperties = new PagePropertiesConfigComponent();
     this.Gui.pageProperties.init(this);
-    this.emit("gui.init");
+    this.emit("gui:init");
 
     this.FileManager.init();
     this.emit("filemanager:init");
 
     this.SectionList.init();
-    this.emit("sectionlist.init");
+    this.emit("sectionlist:init");
 
     this.Breadcrumb.init();
-    this.emit("breadcrumb.init");
+    this.emit("breadcrumb:init");
 
     this.FileManager.addPages(this.config.pages);
     this.Builder.loadPage(page["name"]);
