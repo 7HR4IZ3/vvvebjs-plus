@@ -52,7 +52,7 @@ class Menu {
       })
     }
 
-    $(document).on("mouseenter", ".dropdown-submenu", function () {
+    $(document).on("mouseenter touchstart", ".dropdown-submenu", function () {
       let $sub = $(this).find(".dropdown-context-sub:first"),
         subWidth = $sub.width(),
         subLeft = $sub.offset().left,

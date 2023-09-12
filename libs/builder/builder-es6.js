@@ -31,7 +31,7 @@ https://github.com/givanz/VvvebJs
     var fn = /^[-a-zA-Z0-9]+$/.test(str)
       ? (cache[str] =
           cache[str] ||
-          tmpl(document.getElementById(str)?.innerHTML || TEMPLATES[str])) // Generate a reusable function that will serve as a template
+          tmpl(TEMPLATES[str])) // Generate a reusable function that will serve as a template
       : // generator (and which will be cached).
         new Function(
           "obj",
@@ -158,16 +158,17 @@ function randomId(length) {
 }
 
 function changeNodeName(node, newNodeName) {
+  node = node.get(0);
   let newNode = document.createElement(newNodeName);
-  let attributes = node.get(0).attributes;
 
-  for (let attr of attributes) {
-    newNode.setAttribute(attr.nodeName, attr.nodeValue);
-  }
+  Array.from(node.attributes).forEach(
+    attr => newNode.setAttribute(attr.nodeName, attr.nodeValue)
+  )
+  Array.from(node.childNodes).forEach(
+    child => newNode.appendChild(child)
+  )
 
-  $(newNode).append(...node.children);
-  $(node).replaceWith(newNode);
-
+  node.replaceWith(newNode);
   return newNode;
 }
 
@@ -233,9 +234,17 @@ let fontList = [
   },
 ];
 
+class Plugin {
+  init(builder) {
+    this.builder = builder;
+    this.initialize && this.initialize();
+  }
+}
+
 const eventsKey = Symbol("events");
-class EventEmitter {
+class EventEmitter extends Plugin {
   constructor() {
+    super();
     this[eventsKey] = {};
   }
   on(events, listener) {
@@ -266,7 +275,7 @@ class EventEmitter {
   // Execute each of the listeners in order with the supplied arguments. Returns true if the event had listeners, false otherwise.
   // emit
   emit(event, ...args) {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       let events = [];
       for (let item in this[eventsKey]) {
         if (item.indexOf("*") !== -1) {
@@ -284,17 +293,22 @@ class EventEmitter {
         name: event,
         args: args
       };
-      for (let item of events) {
-        if (typeof item === "function") {
-          item(ev, ...args);
-        } else if (item && item.listener) {
-          item.listener(ev, ...args);
+
+      try {
+        for (let item of events) {
+          if (typeof item === "function") {
+            await item(ev, ...args);
+          } else if (item && item.listener) {
+            await item.listener(ev, ...args);
+          }
         }
+        if (this[eventsKey][event]?.length) {
+          resolve(true);
+        }
+        resolve(false);
+      } catch (err) {
+        reject(err);
       }
-      if (this[eventsKey][event]?.length) {
-        resolve(true);
-      }
-      resolve(false);
     });
   }
   //Removes a listener from the listener array for the specified
@@ -307,13 +321,6 @@ class EventEmitter {
       }
     });
     return this;
-  }
-}
-
-class Plugin {
-  init(builder) {
-    this.builder = builder;
-    this.initialize && this.initialize();
   }
 }
 
@@ -548,7 +555,8 @@ class Components {
   render(type, panel = false) {
     return new Promise((resolve, reject) => {
       let self = this;
-      let FrameDocument = this.builder.Builder.iframe.contentWindow.document;
+      let page = this.builder.Builder.currentPage;
+      let FrameDocument = page.iframe.get(0).contentDocument;
 
       var componentsPanel;
       var component = this._components[type];
@@ -600,9 +608,9 @@ class Components {
       var fn = function (component, property) {
         return property.input_node.on(
           "propertyChange",
-          function (event, value, input, ...args) {
+          (event, value, input, ...args) => {
             let selectedElement;
-            let FrameDocument = this.builder.Builder.iframe.contentWindow.document;
+            let FrameDocument = self.builder.Builder.iframe.contentWindow.document;
             var element = (selectedElement = self.builder.Builder.selectedEl);
 
             if (property.config.child)
@@ -641,11 +649,12 @@ class Components {
               } else if (htmlattr == "style") {
                 //keep old style for undo
                 oldStyle = $("#vvvebjs-styles", FrameDocument).html();
-                element = self.builder.StyleManager.setStyle(
+                element = self.builder.Builder.currentPage.StyleManager.setStyle(
                   element,
                   property.input.data.key,
                   value
                 );
+                element
               } else if (htmlattr == "innerHTML") {
                 element = self.builder.ContentManager.setHtml(element, value);
               } else if (htmlattr == "innerText") {
@@ -757,7 +766,7 @@ class Components {
           }
           if (htmlAttr == "style") {
             //value = element.css(property.key);//jquery css returns computed style
-            value = self.builder.StyleManager.getStyle(
+            value = self.builder.Builder.currentPage.StyleManager.getStyle(
               element,
               property.input.data.key
             ); //getStyle returns declared style
@@ -1100,7 +1109,6 @@ class BuilderPage extends Plugin {
         },
       }).node
     );
-    $("#editors").append(this.iframe);
 
     this.selectedEl = null;
     this.highlightEl = null;
@@ -1108,27 +1116,34 @@ class BuilderPage extends Plugin {
     this.showing = false;
   }
 
-  initialize() {
-    this.builder.emit("builder_page:init", this);
+  init(...args) {
+    super.init(...args);
+    this.StyleManager = new StyleManager(this.builder)
+    return this;
   }
 
-  load(url, callback) {
-    this.builder.Builder._loadIframe(url || this.config.url, callback, this);
+  initialize() {
+    this.builder.emit("builder.page:init", this);
+  }
+
+  load(callback) {
+    this.builder.Builder._loadIframe(this.url, callback, this);
     this.render();
-    this.builder.emit("builder_page:load", this);
+    // this.StyleManager.init(this.iframe.get(0).contentDocument);
+    this.builder.emit("builder.page:load", this);
   }
 
   toggle() {
-    this.builder.emit("builder_page:toggle.before", this);
+    this.builder.emit("builder.page:toggle.before", this);
     if (this.showing === false) {
-      this.iframe.show();
+      $("#editors").append(this.iframe);
       this.render();
       this.showing = true;
     } else {
-      this.iframe.hide();
+      this.iframe.remove();
       this.showing = false;
     }
-    this.builder.emit("builder_page:toggle", this, this.showing);
+    this.builder.emit("builder.page:toggle", this, this.showing);
   }
 
   render() {
@@ -1138,13 +1153,42 @@ class BuilderPage extends Plugin {
     if (this.selectedEl) {
       this.builder.Builder.selectNode(this.selectedEl);
       this.builder.Builder.loadNodeComponent(this.selectedEl);
+      this.builder.emit("builder.page:render", this);
     }
   }
 
   delete() {
-    this.builder.emit("builder_page:delete.before", this);
+    this.builder.emit("builder.page:delete.before", this);
     this.iframe.get(0).remove();
-    this.builder.emit("builder_page:delete", this);
+    this.builder.emit("builder.page:delete", this);
+  }
+
+  get title() {
+    return this.config['title'] || (this.name[0].toUpperCase() + this.name.slice(1))
+  }
+
+  get url() {
+    return this.config['url']
+  }
+
+  get file() {
+    return this.config['file'] || this.url;
+  }
+
+  get folder() {
+    return this.config['folder']
+  }
+
+  get assets() {
+    return this.config['assets'] || []
+  }
+
+  get content() {
+    return this.config['content'] || this.get_content()
+  }
+
+  get_content() {
+
   }
 }
 
@@ -1236,7 +1280,7 @@ class Builder {
   }
 
   get iframe() {
-    return this.page?.iframe.get(0);
+    return this.currentPage.iframe.get(0);
   }
 
   get page() {
@@ -1247,9 +1291,7 @@ class Builder {
     return this.pages.get(this.currentPageName || this.pageName);
   }
 
-  addPage(name, config) {
-    let item = new BuilderPage(name, config);
-    item.init(this.builder);
+  addPage(name, item) {
     this.pages.set(name, item);
     this.builder.emit("builder:page.add", name, item);
     return item;
@@ -1277,7 +1319,9 @@ class Builder {
     page.toggle();
 
     this._addEditorItem(page.name, page);
+
     localStorage.setItem("vvveb.page", name);
+    localStorage.setItem("vvveb.folder", page.folder);
 
     this.builder.emit("builder:page.set", name, page);
   }
@@ -1594,13 +1638,17 @@ class Builder {
   /* iframe */
   _loadIframe(url, callback, page) {
     let self = this;
-    let iframe = page?.iframe.get(0) || self.iframe;
+    let iframe = (page || this.currentPage).iframe.get(0);
     let FrameWindow = iframe.contentWindow;
-    let FrameDocument = iframe.contentWindow.document;
+    let FrameDocument = iframe.contentDocument;
     // self.iframe = this.documentFrame.get(0);
-    iframe.src = url;
+
+    if (url) (iframe.src = url);
+    else { $(FrameDocument).find("html").html(page.content) }
 
     return $(iframe).on("load", function () {
+      FrameDocument = iframe.contentDocument;
+
       self.currentPageName = self.pageName;
 
       let highlightBox = $("#highlight-box").hide();
@@ -1678,7 +1726,7 @@ class Builder {
       self.builder.WysiwygEditor.init(FrameDocument);
       self.builder.emit("wysisyg:init");
 
-      self.builder.StyleManager.init(FrameDocument);
+      self.currentPage.StyleManager.init(FrameDocument);
       self.builder.emit("manager.style:init");
 
       self.builder.ColorPaletteManager.init(FrameDocument);
@@ -1763,8 +1811,10 @@ class Builder {
     //search for component attribute
     let componentName = "";
     let componentAttribute = "";
-
-    el.get && (el = el.get(0));
+    
+    try {
+        (!(el instanceof Element)) && (el = el.get(0));
+    } catch (err) {}
 
     if (el.attributes) {
       for (let attr of el.attributes) {
@@ -1953,8 +2003,7 @@ class Builder {
 
   /* iframe highlight */
   _initHighlight() {
-    let _self = this;
-    let self = this.builder.Builder;
+    let self = this;
 
     self.frameBody.on("mousemove dragover touchmove", function (event) {
       let target;
@@ -2045,7 +2094,7 @@ class Builder {
               oldValue: oldAttrs,
               newValue: selectedEl.attributes.style,
             };
-            _self.builder.Undo.addMutation(mutation);
+            self.builder.Undo.addMutation(mutation);
           } else {
             self.selectedEl.attr({ width, height });
           }
@@ -2071,6 +2120,13 @@ class Builder {
           };
 
           $("#highlight-box").css(style);
+          let n = self.selectedEl.get(0)
+
+          if (event.ctrlKey) {
+            n = self.highlightEl.get(0)
+          }
+          self.selectNode(n)
+          self.loadNodeComponent(n);
         } //else
         if (self.isDragging) {
           var parent = self.highlightEl;
@@ -2118,7 +2174,7 @@ class Builder {
         } //else //uncomment else to disable parent highlighting when dragging
         {
           //if text editor is open check if the highlighted element is not inside the editor
-          if (_self.builder.WysiwygEditor.isActive) {
+          if (self.builder.WysiwygEditor.isActive) {
             if (self.texteditEl?.get(0).contains(event.target)) {
               return true;
             }
@@ -2157,6 +2213,12 @@ class Builder {
 
           $("#highlight-box").css(style);
 
+          if (event.ctrlKey) {
+            let n = self.highlightEl.get(0)
+            self.selectNode(n)
+            self.loadNodeComponent(n);
+          }
+
           if (height < 50) {
             $("#section-actions").addClass("outside");
           } else {
@@ -2180,7 +2242,7 @@ class Builder {
         $("#component-clone").remove();
 
         if (self.dragMoveMutation === false) {
-          if (self.component.dragHtml || _self.builder.dragHtml) {
+          if (self.component.dragHtml || self.builder.dragHtml) {
             //if dragHtml is set for dragging then set real component html
             let newElement = $(self.component.html.node || self.component.html);
             self.dragElement.replaceWith(newElement);
@@ -2198,7 +2260,7 @@ class Builder {
         self.loadNodeComponent(node);
 
         if (self.dragMoveMutation === false) {
-          _self.builder.Undo.addMutation({
+          self.builder.Undo.addMutation({
             type: "childList",
             target: node.parentNode,
             addedNodes: [node],
@@ -2208,7 +2270,7 @@ class Builder {
           self.dragMoveMutation.newParent = node.parentNode;
           self.dragMoveMutation.newNextSibling = node.nextSibling;
 
-          _self.builder.Undo.addMutation(self.dragMoveMutation);
+          self.builder.Undo.addMutation(self.dragMoveMutation);
           self.dragMoveMutation = false;
         }
       }
@@ -2217,11 +2279,11 @@ class Builder {
     self.frameHtml.on("dblclick", function (event) {
       let target;
       if (self.isPreview == false) {
-        if (!_self.builder.WysiwygEditor.isActive) {
+        if (!self.builder.WysiwygEditor.isActive) {
           self.selectPadding = 10;
           self.texteditEl = target = $(event.target);
 
-          _self.builder.WysiwygEditor.edit(self.texteditEl);
+          self.builder.WysiwygEditor.edit(self.texteditEl);
 
           //update select box when the text size is changed
           self.texteditEl.on("blur keyup paste input", self._updateSelectBox);
@@ -2236,7 +2298,7 @@ class Builder {
     self.frameHtml.on("click", function (event) {
       if (self.isPreview == false) {
         if (event.target) {
-          if (_self.builder.WysiwygEditor.isActive) {
+          if (self.builder.WysiwygEditor.isActive) {
             if (self.texteditEl?.get(0).contains(event.target)) {
               return true;
             }
@@ -2250,10 +2312,10 @@ class Builder {
 
           if (
             self.allowResizeableElements ||
-            _self.builder.component.resizable
+            self.builder.component.resizable
           ) {
             $("#select-box").addClass("resizable");
-            self.resizeMode = _self.builder.component.resizeMode || "css";
+            self.resizeMode = self.builder.component.resizeMode || "css";
           } else {
             $("#select-box").removeClass("resizable");
           }
@@ -2267,6 +2329,7 @@ class Builder {
   }
 
   _updateSelectBox() {
+    let self = this;
     if (!self.texteditEl) return;
     var offset = self.selectedEl.offset();
 
@@ -2279,8 +2342,7 @@ class Builder {
   }
 
   _initBox() {
-    var self = this.builder.Builder;
-    let _self = this;
+    let self = this;
 
     $("#toggle-resize-btn").on("mousedown", function (event) {
       self.allowResizeableElements = !self.allowResizeableElements;
@@ -2368,7 +2430,7 @@ class Builder {
 
       let node = self.selectedEl.get(0);
 
-      _self.builder.Undo.addMutation({
+      self.builder.Undo.addMutation({
         type: "childList",
         target: node.parentNode,
         removedNodes: [node],
@@ -2438,7 +2500,7 @@ class Builder {
 
       node = node.get(0);
 
-      _self.builder.Undo.addMutation({
+      self.builder.Undo.addMutation({
         type: "childList",
         target: node.parentNode,
         addedNodes: [node],
@@ -2449,7 +2511,7 @@ class Builder {
     }
 
     $(".components-list li ol li", addSectionBox).on("click", function () {
-      var html = _self.builder.Components.get(this.dataset.type).html;
+      var html = self.builder.Components.get(this.dataset.type).html;
 
       addSectionComponent(
         html,
@@ -2460,7 +2522,7 @@ class Builder {
     });
 
     $(".blocks-list li ol li", addSectionBox).on("click", function () {
-      var html = _self.builder.Blocks.get(this.dataset.type).html;
+      var html = self.builder.Blocks.get(this.dataset.type).html;
 
       addSectionComponent(
         html,
@@ -2471,7 +2533,7 @@ class Builder {
     });
 
     $(".sections-list li ol li", addSectionBox).on("click", function () {
-      var html = _self.builder.Sections.get(this.dataset.type).html;
+      var html = self.builder.Sections.get(this.dataset.type).html;
 
       addSectionComponent(
         html,
@@ -2635,7 +2697,7 @@ class Builder {
   setHtml(html) {
     //documentElement.innerHTML resets <head> each time and the page flickers
     //return window.FrameDocument.documentElement.innerHTML = html;
-    let FrameDocument = this.builder.Builder.iframe.contentWindow.document;
+    let FrameDocument = this.builder.Builder.iframe.contentDocument;
 
     function getTag(html, tag, outerHtml = false) {
       let start = html.indexOf("<" + tag);
@@ -2662,13 +2724,13 @@ class Builder {
     }
   }
 
-  saveAjax(fileName, startTemplateUrl, callback, saveUrl) {
+  async saveAjax(fileName, startTemplateUrl, callback, saveUrl) {
     var data = {};
     let self = this;
     data["file"] =
       fileName && fileName != ""
         ? fileName
-        : self.builder.FileManager.getCurrentFileName();
+        : await self.builder.FileManager.getCurrentFileName();
     data["startTemplateUrl"] = startTemplateUrl;
     if (!startTemplateUrl || startTemplateUrl == null) {
       data["html"] = this.getHtml();
@@ -2807,10 +2869,10 @@ class Gui {
   constructor(instance) {
     let self = this;
     this.builder = instance;
-    this.oldHTML = "";
+    this.oldHTML = document.createElement("p");
 
     this.previewManager = "default";
-    this.previewManagers = { default: this.prepareHtml };
+    this.previewManagers = { default: this.prepareHtml.bind(this) };
 
     this.mainGui = new SectionManager("#vvveb-builder");
 
@@ -2829,14 +2891,13 @@ class Gui {
     this.bottomPanel.breadCrumb = new SectionManager("#breadcrumb-navigator");
 
     let getNode = () => {
-      return self.builder.Builder.highlightEl || self.builder.Builder.selectedEl
+      return self.builder.Builder.selectedEl || self.builder.Builder.highlightEl
     }
 
     let selectNode = (node) => {
       self.builder.Builder.selectNode(node);
       self.builder.Builder.loadNodeComponent(node);
     }
-
     this.contextMenu = new Menu({ builder: this.builder }, [
       new SubMenu("Action", { divider: false }, [
         new MenuItem("Select", {
@@ -2847,16 +2908,16 @@ class Gui {
           }
         }),
         new MenuItem("Rename", {
+          icon: "la la-edit",
           action() {
             let node = getNode();
             let target = prompt("New node name: ");
             if (target) {
-              changeNodeName(node, target);
-              selectNode(node);
+              selectNode(changeNodeName(node, target));
             }
           }
         }),
-        new MenuItem("Xpath", {
+        new MenuItem("XPath", {
           icon: "la la-clipboard",
           action(e) {
             let node = getNode();
@@ -2882,6 +2943,7 @@ class Gui {
 
     this.toggleLeftColumn = function () {
       if ($(window).outerWidth() <= SCREEN_SIZES.md) return;
+      if (self.builder.Builder.isPreview === true) return;
       self.builder.Gui.togglePanel("#left-panel", "--builder-left-panel-width");
       $("#preview-panel").toggleClass("col-md-9").toggleClass("col-md-12");
       $("#left-sidebar").toggleClass("col-md-3");
@@ -2928,15 +2990,15 @@ class Gui {
     };
 
     //post html content through ajax to save to filesystem/db
-    this.saveAjax = function () {
+    this.saveAjax = async function () {
       var btn = $(this);
       var saveUrl = this.dataset.vvvebUrl;
-      var url = self.builder.FileManager.getPageData("file");
+      var url = await self.builder.FileManager.getPageData("file");
 
       $(".loading", btn).toggleClass("d-none");
       $(".button-text", btn).toggleClass("d-none");
 
-      return self.builder.Builder.saveAjax(url, null, null, saveUrl)
+      return (await self.builder.Builder.saveAjax(url, null, null, saveUrl))
         .done(function (data, text) {
           /*
 				//use modal to show save status
@@ -2966,6 +3028,7 @@ class Gui {
           $(".button-text", btn).toggleClass("d-none");
         });
     };
+
     this.toggleEditor = function () {
       $("#toggleEditorJsExecute").toggle();
       //hide breadcrumb when showing the editor
@@ -2986,30 +3049,38 @@ class Gui {
     this.preview = function () {
       $("#iframe-layer").toggle();
       $("#vvveb-builder").toggleClass("preview");
-      $("#preview-panel").toggleClass("col-md-9").toggleClass("col-md-12");
 
-      for (let elem of $(self.builder.Builder.editorTree).find("li")) {
-        let page = self.builder.Builder.pages.get(elem.attr("data-page"));
-        let FrameDocument = page.iframe.get(0).contentDocument;
-        $(".loading-message").addClass("active");
+      let page = self.builder.Builder.currentPage;
+      let FrameDocument = page.iframe.get(0).contentDocument;
 
-        let target = $(FrameDocument).find("body").get(0);
+      $(".loading-message").addClass("active");
 
-        if (self.builder.Builder.isPreview === true) {
-          target.replaceWith(self.oldHTML);
-          self.builder.Builder.isPreview = false;
+      let target = $(FrameDocument).find("body").get(0);
 
-          // To reinitialize select box
-          self.builder.Builder._frameLoaded();
-        } else {
-          self.oldHTML = target.cloneNode(true);
-          target.outerHTML = self.previewManagers[self.previewManager](
-            target.cloneNode(true)
-          );
-          self.builder.Builder.isPreview = true;
-        }
-        $(".loading-message").removeClass("active");
+      if (self.builder.Builder.isPreview === true) {
+        $("#preview-panel")
+          // .addClass("col-md-9")
+          .removeClass("col-md-12");
+
+        target.replaceWith(self.oldHTML);
+        self.builder.Builder.isPreview = false;
+
+        // To reinitialize select box
+        self.builder.Builder._frameLoaded();
+      } else {
+        $("#preview-panel")
+          // .addClass("col-md-9")
+          .addClass("col-md-12");
+
+        self.oldHTML = target.cloneNode(true);
+        target.replaceWith(self.previewManagers[self.previewManager](
+          target.cloneNode(true)
+        ));
+        self.builder.Builder.isPreview = true;
       }
+      $(".loading-message").removeClass("active");
+      // for (let elem of $(self.builder.Builder.editorTree).find("li")) {
+      // }
     };
 
     this.compile = function () {
@@ -3050,6 +3121,51 @@ class Gui {
       }
       self.setMode(theme);
     };
+
+    this.newPage = function () {
+      var newPageModal = $("#new-page-modal");
+  
+      newPageModal
+        .modal("show")
+        .find("form")
+        .off("submit")
+        .submit(async function (e) {
+          var data = {};
+          $.each($(this).serializeArray(), function () {
+            data[this.name] = this.value;
+          });
+  
+          data["title"] = data["file"].replace("/", "").replace(".html", "");
+          var name = (data["name"] =
+            data["folder"].replace("/", "_") + "-" + data["title"]);
+          data["url"] = data["file"] = data["folder"] + "/" + data["file"];
+  
+         await self.builder.FileManager.addPage(data.name, data);
+         
+         self.builder.FileManager.loadPage(name);
+         self.builder.FileManager.scrollBottom();
+         newPageModal.modal("hide");
+        
+          e.preventDefault();
+  
+        //   return self.builder.Builder.saveAjax(
+        //     data.file,
+        //     data.startTemplateUrl,
+        //     function () {
+        //       self.builder.FileManager.loadPage(name);
+        //       self.builder.FileManager.scrollBottom();
+        //       newPageModal.modal("hide");
+        //     },
+        //     this.action
+        //   );
+        });
+    }
+    
+    this.setDesignerMode = function() {
+        //aria-pressed attribute is updated after action is called and we check for false instead of true
+        let designerMode = this.attributes["aria-pressed"].value != "true";
+        self.builder.Builder.setDesignerMode(designerMode);
+      }
 
     $("[data-vvveb-action]").each(function () {
       let on = this.dataset?.vvvebOn || "click";
@@ -3159,46 +3275,7 @@ class Gui {
   }
 
   //Pages, file/components tree
-  newPage() {
-    let _this = this;
-    var newPageModal = $("#new-page-modal");
 
-    newPageModal
-      .modal("show")
-      .find("form")
-      .off("submit")
-      .submit(function (e) {
-        var data = {};
-        $.each($(this).serializeArray(), function () {
-          data[this.name] = this.value;
-        });
-
-        data["title"] = data["file"].replace("/", "").replace(".html", "");
-        var name = (data["name"] =
-          data["folder"].replace("/", "_") + "-" + data["title"]);
-        data["url"] = data["file"] = data["folder"] + "/" + data["file"];
-
-        _this.builder.FileManager.addPage(data.name, data);
-        e.preventDefault();
-
-        return _this.builder.Builder.saveAjax(
-          data.file,
-          data.startTemplateUrl,
-          function () {
-            _this.builder.FileManager.loadPage(name);
-            _this.builder.FileManager.scrollBottom();
-            newPageModal.modal("hide");
-          },
-          this.action
-        );
-      });
-  }
-
-  setDesignerMode() {
-    //aria-pressed attribute is updated after action is called and we check for false instead of true
-    let designerMode = this.attributes["aria-pressed"].value != "true";
-    this.builder.Builder.setDesignerMode(designerMode);
-  }
   //layout
   togglePanel(panel, cssVar) {
     panel = $(panel);
@@ -3887,13 +3964,481 @@ class SectionList {
   }
 }
 
+class StorageHandler extends Plugin {
+  constructor() {
+    super();
+    this.files = [];
+  }
+
+  async addFile(file) {
+    if (this.getFile(file.name, file.folder)) return file;
+    await this.builder.emit("storage.file.add", file)
+    this.files.push(file);
+    this.builder.emit("storage.file.add", file)
+    return file;
+  }
+
+  getFile(fileName, folder=null) {
+    return this.files.find(item => {
+      if (item.name == fileName) {
+        if (folder !== null) {
+          return item.folder == folder
+        }
+        return true;
+      } else {
+        return false;
+      }
+    })
+  }
+
+  async removeFile(fileName, folder=null) {
+    await this.builder.emit("storage.file.remove:before", fileName, folder)
+
+    this.files = this.files.filter(item => {
+      if (item.name == fileName) {
+        if (folder !== null) {
+          return item.folder == folder
+        }
+        return false;
+      } else {
+        return true;
+      }
+    })
+    this.builder.emit("storage.file.remove", fileName, folder)
+  }
+
+  async renameFile(fileName, targetName, folder=null) {
+    await this.builder.emit("storage.file.rename:before", fileName, targetName, folder)
+
+    this.files.forEach(item => {
+      if (item.name == fileName) {
+        if (
+          folder !== null
+          && item.folder != folder
+        ) {
+          return;
+        }
+
+        item.name = targetName;
+      }
+    })
+    this.builder.emit("storage.file.rename", fileName, targetName, folder)
+  }
+
+  getFiles(folder) {
+    if (folder) {
+      return this.files.filter(item => {
+        return item.folder === folder;
+      })
+    } else {
+      return this.files;
+    }
+  }
+
+  async removeFolder(folder) {
+    await this.builder.emit("storage.folder.remove:before", folder)
+
+    this.files = this.files.filter(item => {
+      return item.folder !== folder;
+    })
+
+    this.builder.emit("storage.folder:remove", folder)
+  }
+
+  async renameFolder(folder, newFolder) {
+    await this.builder.emit("storage.folder.rename:before", folder, newFolder)
+
+    this.files.filter(item => {
+      if (item.folder === folder) {
+        item.config.folder = newFolder;
+      }
+    })
+
+    this.builder.emit("storage.folder.rename", folder, newFolder)
+  }
+}
+
+class BrowserStorageHandler extends StorageHandler {
+  /*
+  structure:
+    {
+      files: {
+        'index.html': [
+          "<html>",
+          "<body></body>",
+          "</html>"
+        ],
+        ''
+      }
+    }
+
+  */
+
+  constructor(useSession=false, storageKey="vvvebjs_files") {
+    super();
+
+    this.key = storageKey;
+    this.storage = useSession ? sessionStorage : localStorage;
+  }
+
+  init(builder) {
+    this.builder = builder;
+    this.loadStore();
+  }
+
+  loadStore() {
+    let value = this.storage.getItem(this.key);
+    if (value == undefined) {
+      value = '{ "files": {} }'
+    }
+
+    this.#parseStore(value);
+  }
+
+  #parseStore(value) {
+    let data = JSON.parse(value);
+
+    for (let filePath in data.files) {
+      let fileConfig = data.files[filePath];
+      let index = filePath.lastIndexOf("/");
+      let folder = filePath.substring(0, index);
+      let fileName = filePath.substring(index + 1);
+
+      fileConfig["folder"] = folder;
+
+      let page = new BuilderPage(fileName, fileConfig);
+      console.log(page, this.builder)
+      page.init(this.builder);
+      this.files.push(page)
+    }
+
+    this.builder.on("storage.*", this.saveStore.bind(this));
+  }
+
+  saveStore() {
+    let data = {
+      files: {}
+    }
+
+    this.files.forEach(item => {
+      data.files[item.name] = item.config;
+    })
+
+    try {
+      this.storage.setItem(this.key, JSON.stringify(data));
+    } catch (err) {
+      alert("[StorageHandler] Storing data failed.\nPerhaps you turned off storage access.");
+    }
+
+  }
+}
+
+// class FileManager {
+//   constructor(instance) {
+//     this.builder = instance;
+//     this.tree = false;
+//     this.pages = {};
+//     await  = new BrowserStorageHandler(instance);
+//     this.currentPage = false;
+//     this.allowedComponents = {};
+//   }
+
+//   init(allowedComponents = {}) {
+//     let self = this;
+//     this.allowedComponents = allowedComponents;
+//     this.tree = $("#filemanager .tree > ol").html("");
+
+//     $(this.tree).on("click", "a", function (e) {
+//       e.preventDefault();
+//       return false;
+//     });
+
+//     $(this.tree).on("click", ".delete", function (e) {
+//       let element = $(e.target).closest("li");
+//       self.deletePage(element);
+//       e.preventDefault();
+//       return false;
+//     });
+
+//     $(this.tree).on("click", ".rename", function (e) {
+//       let element = $(e.target).closest("li");
+//       self.renamePage(element, e, false);
+//       e.preventDefault();
+//       return false;
+//     });
+
+//     $(this.tree).on("click", ".duplicate", function (e) {
+//       let element = $(e.target).closest("li");
+//       self.renamePage(element, e, true);
+//       e.preventDefault();
+//       return false;
+//     });
+
+//     $(this.tree).on("click", ".split", function () {
+//       let page = $(this).closest("li").data("page");
+//       if (page)
+//         self.loadPage(page, allowedComponents, undefined, undefined, true);
+//       return false;
+//     });
+
+//     $(this.tree).on("click", "li[data-page] label", function () {
+//       let page = $(this.parentNode).data("page");
+//       if (page) self.loadPage(page, allowedComponents);
+//       return false;
+//     });
+
+//     $(this.tree)
+//       .on("click", "li[data-component] label ", function (e) {
+//         let node = $(e.currentTarget.parentNode).data("node");
+
+//         delay(
+//           () =>
+//             self.builder.Builder.frameHtml.animate(
+//               {
+//                 scrollTop: $(node).offset().top - $(node).height() / 2,
+//               },
+//               500
+//             ),
+//           500
+//         );
+
+//         node.click();
+//       })
+//       .on("mouseenter", "li[data-component] label", function (e) {
+//         let node = $(e.currentTarget.parentNode).data("node");
+
+//         delay(
+//           () =>
+//             self.builder.Builder.frameHtml.animate(
+//               {
+//                 scrollTop: $(node).offset().top - $(node).height() / 2,
+//               },
+//               500
+//             ),
+//           1000
+//         );
+
+//         $(node).trigger("mousemove");
+//       });
+//   }
+
+//   async deletePage(element) {
+//     let page = element[0].dataset;
+//     if (confirm(`Are you sure you want to delete "${page.file}"?`)) {
+//       let signal = new AbortController();
+
+//       await this.builder.emit("files:delete.before", page, signal);
+
+//       fetch(this.builder.config.deleteUrl, {
+//         method: "POST",
+//         body: { file: data.file },
+//         signal: signal
+//       }).then(data => {
+//         let bg = "bg-success";
+//         if (data.success) $("#top-panel .save-btn").attr("disabled", "true");
+//         else (bg = "bg-danger");
+//         displayToast(bg, data.message ?? data);
+//         this.builder.emit("files:delete", page);
+//         element.remove();
+//       }).catch(data => {
+//         displayToast("bg-danger", data.responseText);
+//       })
+//     }
+//   }
+
+//   friendlyName(name) {
+//     name = name.replaceAll("--bs-", "").replaceAll("-", " ").trim();
+//     return (name = name[0].toUpperCase() + name.slice(1));
+//   }
+
+//   async renamePage(element, e, duplicate = false) {
+//     let page = element[0].dataset;
+//     let newfile = prompt(`Enter new file name for "${page.file}"`, page.file);
+//     let _self = this;
+//     if (newfile) {
+//       let req_data = { file: page.file, newfile: newfile, duplicate };
+      
+//       await this.builder.emit("files:page.rename.before", req_data);
+
+//       $.ajax({
+//         type: "POST",
+//         url: renameUrl, //set your server side save script url
+//         data: req_data,
+//         success: function (data) {
+//           let bg = "bg-success";
+//           if (data.success) {
+//             $("#top-panel .save-btn").attr("disabled", "true");
+//           } else {
+//             //bg = "bg-danger";
+//           }
+
+//           displayToast(bg, data.message ?? data);
+//           let baseName = newfile.replace(".html", "");
+//           let newName = this.friendlyName(
+//             newfile.replace(/.*[\/\\]+/, "")
+//           ).replace(".html", "");
+
+//           if (duplicate) {
+//             let data = _self.pages[page.page];
+//             data["file"] = newfile;
+//             data["title"] = newName;
+//             this.builder.FileManager.addPage(baseName, data);
+//           } else {
+//             _self.pages[page.page]["file"] = newfile;
+//             _self.pages[page.page]["title"] = newName;
+//             $("> label span", element).html(newName);
+//             page.url = page.url.replace(page.file, newfile);
+//             page.file = newfile;
+//             _self.pages[page.page]["url"] = page.url;
+//             _self.pages[page.page]["file"] = page.file;
+//           }
+//         },
+//         error: function (data) {
+//           displayToast("bg-danger", data.responseText);
+//         },
+//       });
+//       this.builder.emit("files:page.rename", req_data);
+//     }
+//   }
+
+//   addPage(name, data) {
+//     this.pages[name] = data;
+//     data["name"] = name;
+
+//     var folder = this.tree;
+//     if (data.folder) {
+//       if (
+//         !(folder = this.tree.find('li[data-folder="' + data.folder + '"]'))
+//           .length
+//       ) {
+//         data.folderTitle = data.folder[0].toUpperCase() + data.folder.slice(1);
+//         folder = $(tmpl("vvveb-filemanager-folder", data));
+//         this.tree.append(folder);
+//       }
+
+//       folder = folder.find("> ol");
+//     }
+
+//     folder.append(tmpl("vvveb-filemanager-page", data));
+//     this.builder.emit("files:page.add", name, this.pages[name], folder);
+//   }
+
+//   addPages(pages) {
+//     for (let page of pages) {
+//       if (! (page instanceof BuilderPage)) {
+//         page = new BuilderPage(page["name"], page);
+//       }
+//       page.init(this.builder);
+//       this.addPage(page["name"], page);
+//     }
+//   }
+
+//   addComponent(name, url, title, page) {
+//     $("[data-page='" + page + "'] > ol", this.tree).append(
+//       tmpl("vvveb-filemanager-component", {
+//         name: name,
+//         url: url,
+//         title: title,
+//       })
+//     );
+//   }
+
+//   loadComponents(allowedComponents = {}) {
+//     let FrameDocument = this.builder.Builder.iframe.contentWindow.document;
+
+//     var tree = [];
+//     this.builder.getNodeTree(FrameDocument.body, tree, allowedComponents);
+
+//     var html = this.builder.drawComponentsTree(tree);
+//     $("[data-page='" + this.currentPage + "'] > ol", this.tree).replaceWith(
+//       html
+//     );
+//   }
+
+//   getCurrentUrl() {
+//     if (this.currentPage) {
+//       return this.pages[this.currentPage]["url"];
+//     }
+//   }
+
+//   getPageData(key) {
+//     if (this.currentPage) {
+//       return this.pages[this.currentPage][key];
+//     }
+//   }
+
+//   getCurrentFileName() {
+//     if (this.currentPage) {
+//       var folder = this.pages[this.currentPage]["folder"];
+//       folder = folder ? folder + "/" : "";
+//       return folder + this.pages[this.currentPage]["file"];
+//     }
+//   }
+
+//   reloadCurrentPage() {
+//     if (this.currentPage) return this.loadPage(this.currentPage);
+//   }
+
+//   loadPage(
+//     name,
+//     allowedComponents = false,
+//     disableCache = true,
+//     loadComponents = false,
+//     split = false
+//   ) {
+//     if (name == this.builder.Builder.page?.name) return null;
+//     let page = this.pages[name];
+//     let pageEl = $("[data-page='" + name + "']", this.tree);
+//     //remove active from current active page
+//     $("[data-page]", this.tree).removeClass("active");
+//     //set loaded page as active
+//     pageEl.addClass("active");
+//     //open parent folder if closed
+//     $("> input[type=checkbox]", $(pageEl).parents("[data-folder]")).prop(
+//       "checked",
+//       true
+//     );
+
+//     this.currentPage = name;
+//     var url = page["url"] || "";
+//     $(".btn-preview-url").attr("href", url);
+
+//     url =
+//       url +
+//       (disableCache
+//         ? (url.indexOf("?") > -1 ? "&r=" : "?r=") + Math.random()
+//         : "");
+
+//     let pageItem = this.builder.Builder.addPage(name, page);
+//     this.builder.Builder.setPage(pageItem.name, split);
+//     pageItem.load(() => {
+//       if (loadComponents) {
+//         this.builder.FileManager.loadComponents(allowedComponents);
+//       }
+//       this.builder.SectionList.loadSections(allowedComponents);
+//       // pageItem.StyleManager.init();
+//     });
+
+//     this.builder.emit("files:page.load", name, page, pageEl);
+//   }
+
+//   scrollBottom() {
+//     var scroll = this.tree.parent();
+//     scroll.scrollTop(scroll.prop("scrollHeight"));
+//   }
+// }
+
+
 class FileManager {
   constructor(instance) {
     this.builder = instance;
     this.tree = false;
-    this.pages = {};
     this.currentPage = false;
     this.allowedComponents = {};
+  }
+
+  get pages() {
+    return this.builder.storage.getFiles();
   }
 
   init(allowedComponents = {}) {
@@ -3975,28 +4520,27 @@ class FileManager {
       });
   }
 
-  deletePage(element) {
+  async deletePage(element) {
     let page = element[0].dataset;
-    if (confirm(`Are you sure you want to delete "${page.file}"template?`)) {
-      $.ajax({
-        type: "POST",
-        url: deleteUrl, //set your server side save script url
-        data: { file: page.file },
-        success: function (data) {
-          let bg = "bg-success";
-          if (data.success) {
-            $("#top-panel .save-btn").attr("disabled", "true");
-          } else {
-            //bg = "bg-danger";
-          }
+    if (confirm(`Are you sure you want to delete "${page.file}"?`)) {
+      let signal = new AbortController();
 
-          displayToast(bg, data.message ?? data);
-        },
-        error: function (data) {
-          displayToast("bg-danger", data.responseText);
-        },
-      });
-      element.remove();
+      await this.builder.emit("files:delete.before", page, signal);
+
+      fetch(this.builder.config.deleteUrl, {
+        method: "POST",
+        body: { file: data.file },
+        signal: signal
+      }).then(data => {
+        let bg = "bg-success";
+        if (data.success) $("#top-panel .save-btn").attr("disabled", "true");
+        else (bg = "bg-danger");
+        displayToast(bg, data.message ?? data);
+        this.builder.emit("files:delete", page);
+        element.remove();
+      }).catch(data => {
+        displayToast("bg-danger", data.responseText);
+      })
     }
   }
 
@@ -4005,80 +4549,61 @@ class FileManager {
     return (name = name[0].toUpperCase() + name.slice(1));
   }
 
-  renamePage(element, e, duplicate = false) {
+  async renamePage(element, e, duplicate = false) {
     let page = element[0].dataset;
-    let newfile = prompt(`Enter new file name for "${page.file}"`, page.file);
-    let _self = this;
+    let newfile = prompt(`Enter new file name for "${page.file}":`, page.file);
     if (newfile) {
-      let req_data = { file: page.file, newfile: newfile, duplicate };
-      this.builder.emit("filemanager:page.rename.before", req_data);
+      let data = { page, newfile: newfile, duplicate };
+      
+      await this.builder.emit("files:page.rename.before", { data });
 
-      $.ajax({
-        type: "POST",
-        url: renameUrl, //set your server side save script url
-        data: req_data,
-        success: function (data) {
-          let bg = "bg-success";
-          if (data.success) {
-            $("#top-panel .save-btn").attr("disabled", "true");
-          } else {
-            //bg = "bg-danger";
-          }
+      if (duplicate) {
+        let file = this.builder.storage.getFile(page.file);
+        let newFile = new BuilderPage(newfile, file.config);
+        await this.builder.storage.addFile(newFile);
+      } else {
+        await this.builder.storage.renameFile(page.file, newfile);
+      }
 
-          displayToast(bg, data.message ?? data);
-          let baseName = newfile.replace(".html", "");
-          let newName = this.friendlyName(
-            newfile.replace(/.*[\/\\]+/, "")
-          ).replace(".html", "");
 
-          if (duplicate) {
-            let data = _self.pages[page.page];
-            data["file"] = newfile;
-            data["title"] = newName;
-            this.builder.FileManager.addPage(baseName, data);
-          } else {
-            _self.pages[page.page]["file"] = newfile;
-            _self.pages[page.page]["title"] = newName;
-            $("> label span", element).html(newName);
-            page.url = page.url.replace(page.file, newfile);
-            page.file = newfile;
-            _self.pages[page.page]["url"] = page.url;
-            _self.pages[page.page]["file"] = page.file;
-          }
-        },
-        error: function (data) {
-          displayToast("bg-danger", data.responseText);
-        },
-      });
-      this.builder.emit("filemanager:page.rename", req_data);
+      this.builder.emit("files:page.rename", req_data);
     }
   }
 
-  addPage(name, data) {
-    this.pages[name] = data;
-    data["name"] = name;
+  async addPage(file) {
+    if (!(file instanceof BuilderPage)) {
+      file = new BuilderPage(file["name"], file);
+    }
 
-    var folder = this.tree;
-    if (data.folder) {
+    file.init(this.builder);
+
+    let name = file.name;
+    let folder = this.tree;
+
+    // await this.builder.storage.addFile(file);
+    if (file.config.folder) {
       if (
-        !(folder = this.tree.find('li[data-folder="' + data.folder + '"]'))
-          .length
+        !(
+            folder = this.tree.find(
+                'li[data-folder="' + file.config.folder + '"]'
+            )
+        ).length
       ) {
-        data.folderTitle = data.folder[0].toUpperCase() + data.folder.slice(1);
-        folder = $(tmpl("vvveb-filemanager-folder", data));
+        file.folderTitle = file.config.folder[0].toUpperCase() + file.config.folder.slice(1);
+        folder = $(tmpl("vvveb-filemanager-folder", file));
         this.tree.append(folder);
       }
 
       folder = folder.find("> ol");
     }
 
-    folder.append(tmpl("vvveb-filemanager-page", data));
-    this.builder.emit("filemanager:page.add", name, this.pages[name], folder);
+    folder.append(tmpl("vvveb-filemanager-page", file));
+    this.builder.emit("files:page.add", name, await this.getPage(name), folder);
   }
 
-  addPages(pages) {
-    for (let page in pages) {
-      this.addPage(pages[page]["name"], pages[page]);
+  async addPages(pages) {
+    for (let page of pages) {
+      await this.addPage(page);
     }
   }
 
@@ -4105,22 +4630,20 @@ class FileManager {
   }
 
   getCurrentUrl() {
+    return this.getPageData("url");
+  }
+
+  async getPageData(key) {
     if (this.currentPage) {
-      return this.pages[this.currentPage]["url"];
+      return (await this.builder.storage.getFile(this.currentPage))[key];
     }
   }
 
-  getPageData(key) {
+  async getCurrentFileName() {
     if (this.currentPage) {
-      return this.pages[this.currentPage][key];
-    }
-  }
-
-  getCurrentFileName() {
-    if (this.currentPage) {
-      var folder = this.pages[this.currentPage]["folder"];
+      var folder = await this.builder.storage.getFile(this.currentPage)["folder"];
       folder = folder ? folder + "/" : "";
-      return folder + this.pages[this.currentPage]["file"];
+      return folder + await this.builder.storage.getFile(this.currentPage)["file"];
     }
   }
 
@@ -4128,7 +4651,11 @@ class FileManager {
     if (this.currentPage) return this.loadPage(this.currentPage);
   }
 
-  loadPage(
+  getPage(name) {
+    return this.builder.storage.getFile(name);
+  }
+
+  async loadPage(
     name,
     allowedComponents = false,
     disableCache = true,
@@ -4136,19 +4663,20 @@ class FileManager {
     split = false
   ) {
     if (name == this.builder.Builder.page?.name) return null;
-    let page = $("[data-page='" + name + "']", this.tree);
+    let page = await this.getPage(name);
+    let pageEl = $("[data-page='" + name + "']", this.tree);
     //remove active from current active page
     $("[data-page]", this.tree).removeClass("active");
     //set loaded page as active
-    page.addClass("active");
+    pageEl.addClass("active");
     //open parent folder if closed
-    $("> input[type=checkbox]", $(page).parents("[data-folder]")).prop(
+    $("> input[type=checkbox]", $(pageEl).parents("[data-folder]")).prop(
       "checked",
       true
     );
 
     this.currentPage = name;
-    var url = this.pages[name]["url"];
+    var url = page["url"] || "";
     $(".btn-preview-url").attr("href", url);
 
     url =
@@ -4157,17 +4685,17 @@ class FileManager {
         ? (url.indexOf("?") > -1 ? "&r=" : "?r=") + Math.random()
         : "");
 
-    let pageItem = this.builder.Builder.addPage(name, this.pages[name]);
+    let pageItem = this.builder.Builder.addPage(name, page);
     this.builder.Builder.setPage(pageItem.name, split);
-    pageItem.load(url, () => {
+    pageItem.load(() => {
       if (loadComponents) {
         this.builder.FileManager.loadComponents(allowedComponents);
       }
       this.builder.SectionList.loadSections(allowedComponents);
-      this.builder.StyleManager.init();
+      // pageItem.StyleManager.init();
     });
 
-    this.builder.emit("filemanager:page.load", name, this.pages[name], page);
+    this.builder.emit("files:page.load", name, page, pageEl);
   }
 
   scrollBottom() {
@@ -4175,6 +4703,7 @@ class FileManager {
     scroll.scrollTop(scroll.prop("scrollHeight"));
   }
 }
+
 
 class Breadcrumb {
   constructor(instance) {
@@ -4286,7 +4815,7 @@ class FontsManager {
       if (elementFont.element) {
         //if (getComputedStyle(elementFont.element)['font-family'] != elementFont.fontFamily) {
         if (
-          this.builder.StyleManager.getStyle(element, "font-family") !=
+          this.builder.Builder.currentPage.StyleManager.getStyle(element, "font-family") !=
           elementFont.fontFamily
         ) {
           this.removeFont(elementFont.provider, elementFont.fontFamily);
@@ -4407,11 +4936,13 @@ class VvvebJS extends EventEmitter {
     config = config || {};
     this.config = {
       ...config,
+      storage: config.storage || new BrowserStorageHandler(),
       themeBaseUrl: config.themeBaseUrl || "demo/landing/",
       components: [new HTMLComponents(), ...(config.components || [])],
       plugins: [...(config.plugins || [])],
       sections: [...(config.sections || [])],
       blocks: [...(config.blocks || [])],
+      target: config.target || "#app"
     };
     this.defaultComponent = "_base";
     this.preservePropertySections = true;
@@ -4426,6 +4957,13 @@ class VvvebJS extends EventEmitter {
       : "";
     this.imgBaseUrl = this.baseUrl + "libs/builder/";
     this.themeBaseUrl = this.config.themeBaseUrl || "demo/landing/";
+
+    $(this.config.target).append($(BuilderUI()));
+    $('body').append($(BuilderUiModals()));
+
+    this.storage = this.config.storage;
+    this.storage.init(this);
+    this.emit("storage:init");
 
     this.ComponentsGroup = {};
     this.SectionsGroup = {};
@@ -4446,7 +4984,7 @@ class VvvebJS extends EventEmitter {
     this.FileManager = new FileManager(this);
 
     this.FontsManager = new FontsManager(this);
-    this.StyleManager = new StyleManager(this);
+    // this.StyleManager = new StyleManager(this);
     this.ContentManager = new ContentManager(this);
     this.ColorPaletteManager = new ColorPaletteManager(this);
   }
@@ -4462,12 +5000,13 @@ class VvvebJS extends EventEmitter {
 
     let page = localStorage.getItem("vvveb.page");
     if (page) {
-      page = this.config.pages.find((item) => item.name === page);
+      page = this.storage.getFile(page, localStorage.getItem("vvveb.folder"));
     }
 
-    if (!page) page = this.config.pages[0];
+    if (!page) (page = this.storage.files[0]);
 
-    this.Builder.init(page["url"]);
+    page && this.Builder.init(page["url"]);
+
     this.on("builder:page.focus", () => this.Gui.pageProperties.render());
 
     this.Gui.init();
@@ -4476,7 +5015,7 @@ class VvvebJS extends EventEmitter {
     this.emit("gui:init");
 
     this.FileManager.init();
-    this.emit("filemanager:init");
+    this.emit("files:init");
 
     this.SectionList.init();
     this.emit("sectionlist:init");
@@ -4484,8 +5023,10 @@ class VvvebJS extends EventEmitter {
     this.Breadcrumb.init();
     this.emit("breadcrumb:init");
 
-    this.FileManager.addPages(this.config.pages);
-    this.Builder.loadPage(page["name"]);
+    this.FileManager.addPages(this.storage.files);
+
+    page && this.Builder.loadPage(page["name"]);
+
     this.Breadcrumb.init();
   }
 

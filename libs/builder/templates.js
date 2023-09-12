@@ -519,7 +519,7 @@ let TEMPLATES = {
   "vvveb-editormanager-page": `
     <li data-page="{%=name%}" class="file{% if (typeof className !== 'undefined') { %} {%=className%}{% } %}">
       <label for="{%=name%}" {% if (typeof description !== 'undefined') { %} title="{%=description%}" {% } %}>
-        <span>{%=config.title%}</span>
+        <span>{%=title%}</span>
         <div class="file-actions" style="display: block !important">
           <button href="#" class="close btn btn-outline-danger" title="Close"><i class="la la-times"></i></button>
         </div>

@@ -70,10 +70,10 @@ class MultiInput {
     this.data = {
       htmlAttr: "",
       key: "",
+      defaultValue: defaults || {}
     };
     this.inputs = inputs;
     this.value = {};
-    defaults = defaults || {};
     this.div = $("<div></div>");
 
     for (let key in this.inputs) {
@@ -100,13 +100,6 @@ class MultiInput {
           )
         )
       );
-      if (defaults[key]) {
-        if (input instanceof TextInput) {
-          input.element.find("input").attr("value", defaults[key]);
-        } else {
-          input.setValue(defaults[key]);
-        }
-      }
     }
   }
 
@@ -129,29 +122,36 @@ class MultiInput {
   get html() {
     return this.div;
   }
+
+  init(node) {
+      for (let i in this.inputs) {
+          this.inputs[i].init && this.inputs[i].init(node);
+      }
+  }
 }
 
 class DOMNodeInput extends MultiInput {
   constructor(doc, target, attributes = ["innerText"]) {
     let inputs = {};
     let defaults = {};
-    let i = 1;
 
-    doc.querySelectorAll(target).forEach((item) => {
+    doc.querySelectorAll(target).forEach((item, i) => {
       inputs[i] = new TextInput({ key: `${target}_${i}` });
       item = $(item);
+      let node = item.get(0);
 
       for (let attr of attributes) {
-        if (!defaults[i] && item.attr(attr)?.length) {
+        if (!defaults[i]) {
           if (attr == "innerText" || attr == "innerHTML") {
-            inputs[i] = new (
-              window.CodeInput ? window.CodeInput : TextareaInput
-            )({ key: `${target}_${i}` });
-            defaults[i] = attr == "innerText" ? item.text() : item.html();
+            inputs[i] = new CodeInput({ key: `${target}_${i}` });
+            defaults[i] = (
+                attr == "innerText" ? node.innerText : node.innerHTML
+            ).trim()
           } else {
             defaults[i] = item.attr(attr);
           }
-          break;
+        //   inputs[i].setValue(defaults[i])
+        //   console.log(attr, node, inputs[i], defaults[i])
         }
       }
 
@@ -163,7 +163,6 @@ class DOMNodeInput extends MultiInput {
       // 	inputs[i] = new (window.CodeInput ? CodeInput : TextareaInput)({ key: `${target}_${i}` });
       // 	defaults[i] = item.innerText;
       // }
-      i++;
     });
 
     super(inputs, defaults);
@@ -189,6 +188,8 @@ class TextareaInput extends Input {
   setValue(value) {
     $("textarea", this.element).val(value);
   }
+  
+  init() {}
 
   get html() {
     let data = this.data;

@@ -828,13 +828,14 @@ class PagePropertiesConfigComponent extends Component {
   installed = [];
 
   get properties() {
-    let FrameDocument = this.builder.Builder.iframe.contentWindow.document
+     let currentPage = this.builder.Builder.currentPage;
+    let FrameDocument = currentPage.iframe.get(0).contentDocument
     let properties = [
       new PropertyGroup("Page Properties", [
         new PropertyGroup("Styles", { section: content_section }, [
           new Property(
             "",
-            new DOMNodeInput(FrameDocument, "[rel='stylesheet'], style", [
+            new DOMNodeInput(FrameDocument, "link[rel='stylesheet'], style", [
               "href",
               "innerText",
             ]),
@@ -844,7 +845,7 @@ class PagePropertiesConfigComponent extends Component {
         new PropertyGroup("Scripts", { section: content_section }, [
           new Property(
             "",
-            new DOMNodeInput(FrameDocument, "script[src]", [
+            new DOMNodeInput(FrameDocument, "script", [
               "src",
               "innerText",
             ]),

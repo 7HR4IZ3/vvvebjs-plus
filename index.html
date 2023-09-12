@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en" style="overflow: hidden">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no"
+    />
+
+    <meta name="description" content="" />
+    <meta name="author" content="" />
+    <link rel="icon" href="favicon.ico" />
+    <base href="" />
+    <title>VvvebJs</title>
+
+    <link href="css/editor.css" rel="stylesheet" />
+		<link rel="stylesheet" type="text/css" href="css/context.standalone.css">
+  </head>
+
+  <body style="overflow: hidden">
+    <div id="root">
+    </div>
+
+    <!-- jquery-->
+    <script src="js/jquery.min.js"></script>
+    <script src="js/jquery.hotkeys.js"></script>
+
+    <!-- bootstrap-->
+    <script src="js/popper.min.js" type="text/javascript"></script>
+    <script src="js/bootstrap.min.js"></script>
+
+    <!-- builder code-->
+    <script src="libs/builder/gui.js"></script>
+    <script src="libs/builder/templates.js"></script>
+    <script src="libs/builder/builder-es6.js"></script>
+    <script src="libs/builder/context.js"></script>
+    <!-- undo manager-->
+    <!-- <script src="libs/builder/undo.js"></script> -->
+    <!-- inputs-->
+    <script src="libs/builder/inputs.js"></script>
+
+    <!-- media gallery -->
+    <link href="libs/media/media.css" rel="stylesheet" />
+    <script>
+      window.mediaPath = "media";
+      // Vvveb.themeBaseUrl = "demo/landing/";
+    </script>
+    <script src="libs/media/media.js"></script>
+    <script src="libs/media/openverse.js"></script>
+    <script src="libs/builder/plugin-media.js"></script>
+
+    <!-- code mirror - code editor syntax highlight -->
+    <link href="libs/codemirror/lib/codemirror.css" rel="stylesheet" />
+    <link href="libs/codemirror/theme/monokai.css" rel="stylesheet" />
+    <link href="libs/codemirror/theme/material.css" rel="stylesheet" />
+    <script src="libs/codemirror/lib/codemirror.js"></script>
+    <script src="libs/codemirror/lib/xml.js"></script>
+    <script src="libs/codemirror/lib/javascript.js"></script>
+    <script src="libs/codemirror/addon/edit/matchbrackets.js"></script>
+    <script src="libs/codemirror/addon/comment/continuecomment.js"></script>
+    <script src="libs/codemirror/addon/comment/comment.js"></script>
+    <script src="libs/codemirror/lib/formatting.js"></script>
+    <script src="libs/builder/plugin-codemirror.js"></script>
+
+    <!-- bootstrap colorpicker //uncomment bellow scripts to enable -->
+
+    <script src="libs/bootstrap-colorpicker/js/bootstrap-colorpicker.min.js"></script>
+    <link
+      href="libs/bootstrap-colorpicker/css/bootstrap-colorpicker.min.css"
+      rel="stylesheet"
+    />
+    <script src="libs/builder/plugin-bootstrap-colorpicker.js"></script>
+
+    <!-- components-->
+    <!-- script src="libs/builder/components-server.js"></script -->
+    <script src="libs/builder/plugin-google-fonts.js"></script>
+    <script src="libs/builder/component.js"></script>
+    <script src="libs/builder/components-html.js"></script>
+    <script src="libs/builder/plugin-aos.js"></script>
+    <script src="libs/builder/plugin-bootstrap5.js"></script>
+    <script src="libs/builder/plugin-utils.js"></script>
+  
+    <!-- <script src="libs/builder/components-common.js"></script> -->
+    <!-- <script src="libs/builder/components-bootstrap5.js"></script> -->
+    <!-- <script src="libs/builder/components-elements.js"></script> -->
+    <!-- <script src="libs/builder/components-widgets.js"></script> -->
+
+    <script src="libs/builder/nunjucks.min.js"></script>
+    <script src="libs/builder/plugin-nunjucks.js"></script> -->
+
+    <script src="libs/builder/onsenui.min.js"></script>
+    <script src="libs/builder/plugin-onsenui.js"></script>
+
+    <!-- sections-->
+    <!-- <script src="libs/builder/sections.js"></script> -->
+    <!-- <script src="demo/landing/sections/sections.js"></script> -->
+    <!-- <script src="libs/builder/sections-bootstrap4.js"></script> -->
+
+    <!-- blocks-->
+    <!-- <script src="libs/builder/blocks-bootstrap4.js"></script> -->
+
+    <!-- plugins -->
+    <!-- 
+      Tinymce plugin
+      Clone or copy https://github.com/tinymce/tinymce-dist to libs/tinymce-dist 
+      -->
+    <!-- 
+      <script src="libs/tinymce-dist/tinymce.min.js"></script>
+      <script src="libs/builder/plugin-tinymce.js"></script>	
+      -->
+
+    <!-- 
+      CKEditor plugin
+      Unzip the latest ckeditor release zip from https://github.com/ckeditor/ckeditor4/releases to libs/ckeditor 
+      -->
+
+    <script src="libs/ckeditor/ckeditor.js"></script>
+    <script src="libs/builder/plugin-ckeditor.js"></script>
+    <!-- <script src="builder.js"></script> -->
+
+    <!-- jszip - download page as zip -->
+    <script src="libs/jszip/jszip.min.js"></script>
+    <script src="libs/jszip/filesaver.min.js"></script>
+    <script src="libs/builder/plugin-jszip.js"></script>
+
+    <!-- autocomplete plugin used by autocomplete input-->
+    <script src="libs/autocomplete/jquery.autocomplete.js"></script>
+
+    <script>
+      let renameUrl = "save.php?action=rename";
+      let deleteUrl = "save.php?action=delete";
+      let pages = [
+        {
+          name: "narrow-jumbotron",
+          title: "Jumbotron",
+          url: "demo/narrow-jumbotron/index.html",
+          file: "demo/narrow-jumbotron/index.html",
+          assets: ["demo/narrow-jumbotron/narrow-jumbotron.css"],
+        },
+        {
+          name: "editor",
+          title: "Editor",
+          url: "editor-ui.html",
+          file: "editor-ui.html",
+        },
+        {
+          name: "empty-page",
+          title: "Empty page",
+          url: "demo/empty/index.html",
+          file: "demo/empty/index.html",
+          /*assets: [
+            "/libs/builder/onsenui.min.css",
+            "/libs/builder/onsenui.min.js"
+          ],*/
+        },
+        {
+          name: "album",
+          title: "Album",
+          url: "demo/album/index.html",
+          file: "demo/album/index.html",
+          folder: "content",
+          assets: ["demo/album/album.css"],
+        },
+        {
+          name: "blog",
+          title: "Blog",
+          url: "demo/blog/index.html",
+          file: "demo/blog/index.html",
+          folder: "content",
+          assets: ["demo/blog/blog.css"],
+        },
+        {
+          name: "carousel",
+          title: "Carousel",
+          url: "demo/carousel/index.html",
+          file: "demo/carousel/index.html",
+          folder: "content",
+          assets: ["demo/carousel/carousel.css"],
+        },
+        {
+          name: "offcanvas",
+          title: "Offcanvas",
+          url: "demo/offcanvas/index.html",
+          file: "demo/offcanvas/index.html",
+          folder: "content",
+          assets: [
+            "demo/offcanvas/offcanvas.css",
+            "demo/offcanvas/offcanvas.js",
+          ],
+        },
+        {
+          name: "pricing",
+          title: "Pricing",
+          url: "demo/pricing/index.html",
+          file: "demo/pricing/index.html",
+          folder: "ecommerce",
+          assets: ["demo/pricing/pricing.css"],
+        },
+        {
+          name: "product",
+          title: "Product",
+          url: "demo/product/index.html",
+          file: "demo/product/index.html",
+          folder: "ecommerce",
+          assets: ["demo/product/product.css"],
+        },
+        new BuilderPage("Demo", {
+          content: "<h1>Hello</h1>"
+        }),
+        new BuilderPage("Demo2", {
+          url: "demo/product/index.html",
+        })
+      ];
+
+      pages = pages.map(item => {
+        if (!(item instanceof BuilderPage)) {
+          return new BuilderPage(item["name"], item);
+        }
+        return item;
+      })
+
+      let builder;
+
+      // let storage = new ServerManager()
+
+      $(async function() {
+        builder = new VvvebJS({
+          storage: new BrowserStorageHandler(),
+          themeBaseUrl: "demo/landing/",
+          target: "#root",
+          components: [
+            //new CommonComponents(),
+            new HTMLComponents(),
+            // new ElementsComponents(),
+            // new WidgetsComponents(),
+          ],
+          plugins: [
+            new AosPlugin(),
+            new MediaPlugin(),
+            new JsZipPlugin(),
+            new NunjucksPlugin(),
+            new CKEditorPlugin(),
+            new OnsenuiPlugin(),
+            new GoogleFontsManager(),
+            new CodeMirrorPlugin(),
+            new Bootstrap5Plugin(),
+            new ClipboardPlugin(),
+            new SearchBarPlugin()
+          ],
+          codeeditor: {
+            lineWrapping: true,
+            fontSize: '9px'
+          },
+        });
+
+        if (!builder.storage.files.length) {
+          for (let page of pages) {
+            await builder.storage.addFile(page)
+          }
+        }
+
+        builder.initialize();
+      });
+    </script>
+  </body>
+</html>

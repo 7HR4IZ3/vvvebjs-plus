@@ -23,9 +23,9 @@ class CodeInput extends Input {
 	init(node) {
 		let _this = this;
 		this.codemirror = CodeMirror.fromTextArea(node.find("textarea").get(0), {
-			mode: 'text/html',
-			lineNumbers: false,
-			autofocus: false,
+			mode: 'javascript',
+			lineNumbers: true,
+			autofocus: true,
 			lineWrapping: false,
 			theme: ((localStorage.getItem("vvveb.theme") || "light") === "light") ? "material" : 'monokai',
 			...(this.data.config || {})
